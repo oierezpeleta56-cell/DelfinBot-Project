@@ -82,6 +82,11 @@ local infiniteJumpConn
 local antiRagdollConn
 local dashConn
 local characterAddedConn
+local positionMonitorConn
+
+-- Variables de seguridad para Infinite Jump
+local lastPosition = nil
+local teleportDetected = false
 
 -- ==========================================
 -- SISTEMA DE NOTIFICACIONES
@@ -178,27 +183,128 @@ local function getBatTool()
 end
 
 -- ==========================================
--- INFINITE JUMP (RECONSTRUIDO - SIN RUBBERBANDING)
+-- INFINITE JUMP (ANTI-CHEAT BYPASS)
 -- ==========================================
+local lastJumpTime = 0
+local jumpCooldown = 0.1
+local lastHealth = 100
+local healthCheckCooldown = 0
+
 local function setupInfiniteJump()
     if infiniteJumpConn then
         infiniteJumpConn:Disconnect()
         infiniteJumpConn = nil
     end
     
+    if positionMonitorConn then
+        positionMonitorConn:Disconnect()
+        positionMonitorConn = nil
+    end
+    
     if not Toggles.InfiniteJump then return end
     
-    -- Usar el evento JumpRequest del servidor (método orgánico)
+    -- Monitor de posición para detectar teleports del anti-cheat
+    task.spawn(function()
+        while Toggles.InfiniteJump do
+            pcall(function()
+                local character, hrp = getCharacterAndHRP()
+                if hrp and lastPosition then
+                    local distance = (hrp.Position - lastPosition).Magnitude
+                    
+                    -- Si nos movieron más de 50 studs instantáneamente, es el anti-cheat
+                    if distance > 50 then
+                        teleportDetected = true
+                        showNotification("⚠️ Teleport detectado, esperando...", 2)
+                        task.wait(2)
+                        teleportDetected = false
+                    end
+                end
+                
+                if hrp then
+                    lastPosition = hrp.Position
+                end
+            end)
+            task.wait(0.1)
+        end
+    end)
+    
     infiniteJumpConn = UIS.JumpRequest:Connect(function()
         if not Toggles.InfiniteJump then return end
+        
+        -- Si detectamos teleport, no saltar
+        if teleportDetected then return end
+        
+        local currentTime = tick()
+        
+        -- Cooldown humano (evita detección por saltos rápidos)
+        if currentTime - lastJumpTime < jumpCooldown then return end
+        
+        -- Anti-Die: si acabamos de perder salud, esperar 1 segundo
+        if currentTime - healthCheckCooldown < 1 then return end
         
         local ok = pcall(function()
             local character, hrp, humanoid = getCharacterAndHRP()
             if not character or not hrp or not humanoid then return end
             
-            -- Usar ChangeState para que el servidor reconozca el salto como legal
+            -- Anti-Die: Detectar caída brusca de salud
+            if humanoid.Health < lastHealth - 20 then
+                healthCheckCooldown = currentTime
+                lastHealth = humanoid.Health
+                Toggles.InfiniteJump = false
+                showNotification("⚠️ Salto desactivado por seguridad", 2)
+                task.wait(1)
+                Toggles.InfiniteJump = true
+                setupInfiniteJump()
+                return
+            end
+            lastHealth = humanoid.Health
+            
+            -- Verificar que no estemos atascados (No-Clip temporal)
+            local rayParams = RaycastParams.new()
+            rayParams.FilterDescendantsInstances = {character}
+            rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+            
+            local rayOrigin = hrp.Position
+            local rayDirection = Vector3.new(0, -3, 0)
+            local rayResult = workspace:Raycast(rayOrigin, rayDirection, rayParams)
+            
+            -- Si estamos muy pegados al suelo o atascados, no saltar
+            if rayResult and rayResult.Distance < 0.5 then
+                -- Estamos en el suelo, salto normal
+            end
+            
+            -- VELOCITY BYPASS: Aplicar fuerza física real
+            -- Esto hace que el servidor vea el movimiento como físicamente válido
+            local jumpPower = humanoid.JumpPower or 50
+            
+            -- Limitar el salto para que no sea demasiado obvio (máx 60% del jump power)
+            -- Esto evita que el anti-cheat detecte saltos anormalmente altos
+            local velocityBoost = Vector3.new(0, math.min(jumpPower * 0.6, 35), 0)
+            
+            -- Usar AssemblyLinearVelocity para movimiento físico real
+            hrp.AssemblyLinearVelocity = Vector3.new(
+                hrp.AssemblyLinearVelocity.X,
+                velocityBoost.Y,
+                hrp.AssemblyLinearVelocity.Z
+            )
+            
+            -- Cambiar estado DESPUÉS de aplicar velocidad
+            -- Esto sincroniza el estado con el movimiento físico
+            task.wait(0.05)
             humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+            
+            lastJumpTime = currentTime
         end)
+        
+        if not ok then
+            -- Si hay error, desactivar temporalmente
+            Toggles.InfiniteJump = false
+            task.wait(0.5)
+            if Toggles.InfiniteJump == false then
+                Toggles.InfiniteJump = true
+                setupInfiniteJump()
+            end
+        end
     end)
 end
 
@@ -510,6 +616,44 @@ end
 local function onCharacterAdded(character)
     task.wait(1)
     
+    -- Resetear salud inicial
+    local humanoid = character:WaitForChild("Humanoid", 5)
+    if humanoid then
+        lastHealth = humanoid.Health
+        healthCheckCooldown = 0
+        lastPosition = nil
+        teleportDetected = false
+        
+        -- Monitorear cambios de salud para Anti-Die
+        humanoid.HealthChanged:Connect(function(health)
+            if Toggles.InfiniteJump and lastHealth - health > 20 then
+                -- Caída brusca de salud detectada
+                healthCheckCooldown = tick()
+                showNotification("⚠️ Daño detectado, pausando saltos", 1)
+            end
+            lastHealth = health
+        end)
+        
+        -- Normalizar estado del personaje cada segundo (anti-detección)
+        task.spawn(function()
+            while character and character.Parent do
+                if Toggles.InfiniteJump then
+                    pcall(function()
+                        -- Asegurar que el humanoid está en estado normal cuando no saltamos
+                        if humanoid.FloorMaterial ~= Enum.Material.Air then
+                            -- Estamos en el suelo, normalizar
+                            if humanoid:GetState() ~= Enum.HumanoidStateType.Running and
+                               humanoid:GetState() ~= Enum.HumanoidStateType.Jumping then
+                                humanoid:ChangeState(Enum.HumanoidStateType.Running)
+                            end
+                        end
+                    end)
+                end
+                task.wait(1)
+            end
+        end)
+    end
+    
     if Toggles.InfiniteJump then
         setupInfiniteJump()
     end
@@ -524,6 +668,15 @@ local function onCharacterAdded(character)
 end
 
 characterAddedConn = player.CharacterAdded:Connect(onCharacterAdded)
+
+-- Inicializar salud actual
+task.spawn(function()
+    local character = player.Character or player.CharacterAdded:Wait()
+    local humanoid = character:WaitForChild("Humanoid", 5)
+    if humanoid then
+        lastHealth = humanoid.Health
+    end
+end)
 
 -- ==========================================
 -- ANTI-AFK
@@ -805,6 +958,7 @@ UnloadBtn.MouseButton1Click:Connect(function()
     if antiRagdollConn then antiRagdollConn:Disconnect() end
     if dashConn then dashConn:Disconnect() end
     if characterAddedConn then characterAddedConn:Disconnect() end
+    if positionMonitorConn then positionMonitorConn:Disconnect() end
     
     if flyLinearVelocity then flyLinearVelocity:Destroy() end
     if flyAttachment then flyAttachment:Destroy() end
