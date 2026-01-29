@@ -1,7 +1,13 @@
 -- ==========================================
--- ROBLOX LUAU SCRIPT FOR GAME CHEATS
--- Features: Base ESP, Auto-Grab, Infinite Kill Aura, Base Opener, Anti-Reset Movement
+-- ROBLOX LUAU SCRIPT FOR GAME CHEATS - DELFINBOT V2.0
+-- Features: Base ESP, Auto-Grab, Infinite Kill Aura, Base Opener, Fly, Dash
+-- With Modern GUI (Mobile & PC Friendly)
 -- ==========================================
+
+-- Bootloader: Wait for game to load
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -11,18 +17,16 @@ local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
-local character = player.Character or player.CharacterAdded:Wait()
-local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
-local humanoid = character:WaitForChild("Humanoid")
+local character, humanoidRootPart, humanoid
 
 -- ==========================================
 -- CONFIGURATIONS
 -- ==========================================
 local Config = {
-    AutoGrabRange = 15,
+    AutoGrabRange = 18,
     KillAuraRange = 12,
     DashDistance = 12,
-    FlySpeed = 50,  -- Speed for fly mode
+    FlySpeed = 50,
 }
 
 -- Toggles
@@ -30,7 +34,6 @@ local _G = _G or {}
 _G.BaseESP = _G.BaseESP or false
 _G.AutoGrab = _G.AutoGrab or false
 _G.InfiniteKillAura = _G.InfiniteKillAura or false
-_G.BaseOpener = _G.BaseOpener or false
 _G.FlyMode = _G.FlyMode or false
 
 -- ==========================================
@@ -42,6 +45,8 @@ local function getCharacter()
     humanoid = character:WaitForChild("Humanoid")
     return character, humanoidRootPart, humanoid
 end
+
+getCharacter()  -- Initial call
 
 -- ==========================================
 -- BASE ESP: Find and modify Walls, Gates, Fences
@@ -55,15 +60,15 @@ local function updateBaseESP()
                 if not espParts[part] then
                     espParts[part] = true
                     part.Transparency = 0.5
-                    part.CanCollide = true  -- As per request, keeping CanCollide true
+                    part.CanCollide = true
                 end
             end
         end
     else
         for part in pairs(espParts) do
             if part and part.Parent then
-                part.Transparency = 0  -- Reset to original (assuming 0 is default)
-                part.CanCollide = true  -- Reset CanCollide
+                part.Transparency = 0
+                part.CanCollide = true
             end
         end
         espParts = {}
@@ -92,7 +97,6 @@ local function startAutoGrabLoop()
                                 task.wait(0.1)
                                 obj:InputHoldEnd()
                             elseif obj:IsA("TouchTransmitter") then
-                                -- Simulate touch by moving to the part briefly
                                 local originalPos = hrp.Position
                                 hrp.CFrame = CFrame.new(obj.Parent.Position)
                                 task.wait(0.05)
@@ -110,11 +114,9 @@ local function startAutoGrabLoop()
 end
 
 -- ==========================================
--- INFINITE KILL AURA: Damage players within range without tool
+-- INFINITE KILL AURA: Damage players within range
 -- ==========================================
 local killAuraRunning = false
-
--- Assuming the game has a damage remote; adjust "DamageRemote" to the actual name if known
 local damageRemote = ReplicatedStorage:FindFirstChild("DamageRemote") or Workspace:FindFirstChild("DamageRemote", true)
 
 local function startKillAuraLoop()
@@ -131,11 +133,9 @@ local function startKillAuraLoop()
                         if targetHRP then
                             local dist = (targetHRP.Position - hrp.Position).Magnitude
                             if dist <= Config.KillAuraRange then
-                                -- Fire damage remote if available
                                 if damageRemote and damageRemote:IsA("RemoteEvent") then
                                     damageRemote:FireServer(plr.Character)
                                 else
-                                    -- Fallback: If no remote, try to use a bat tool if equipped
                                     local tool = character:FindFirstChildOfClass("Tool")
                                     if tool and tool.Name:lower():find("bat") then
                                         tool:Activate()
@@ -173,10 +173,9 @@ local function triggerBaseOpener()
 end
 
 -- ==========================================
--- ANTI-RESET MOVEMENT: Fly and Dash using LinearVelocity
+-- FLY MODE: Using LinearVelocity
 -- ==========================================
 local flyAttachment, flyLinearVelocity
-local dashAttachment, dashLinearVelocity
 
 local function startFly()
     if not flyAttachment then
@@ -216,6 +215,11 @@ local function stopFly()
     humanoid.PlatformStand = false
 end
 
+-- ==========================================
+-- DASH: 12-stud forward push using LinearVelocity
+-- ==========================================
+local dashAttachment, dashLinearVelocity
+
 local function dashForward()
     if not dashAttachment then
         dashAttachment = Instance.new("Attachment", humanoidRootPart)
@@ -227,43 +231,188 @@ local function dashForward()
     local cam = Workspace.CurrentCamera
     if cam then
         local direction = cam.CFrame.LookVector
-        dashLinearVelocity.VectorVelocity = direction * (Config.DashDistance * 10)  -- Quick dash
+        dashLinearVelocity.VectorVelocity = direction * (Config.DashDistance * 10)
         task.wait(0.2)
         dashLinearVelocity.VectorVelocity = Vector3.new(0, 0, 0)
     end
 end
 
--- Keybind for Dash (e.g., Q key)
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.KeyCode == Enum.KeyCode.Q then
-        dashForward()
+-- ==========================================
+-- AUTO-REFRESH: Restart features on respawn
+-- ==========================================
+player.CharacterAdded:Connect(function(newChar)
+    character = newChar
+    humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+    humanoid = character:WaitForChild("Humanoid")
+
+    -- Restart Fly if enabled
+    if _G.FlyMode then
+        stopFly()
+        startFly()
+    end
+
+    -- Restart Kill Aura if enabled
+    if _G.InfiniteKillAura then
+        killAuraRunning = false
+        startKillAuraLoop()
+    end
+
+    -- Dash attachment recreation if needed
+    if dashAttachment then dashAttachment:Destroy() dashAttachment = nil end
+    if dashLinearVelocity then dashLinearVelocity:Destroy() dashLinearVelocity = nil end
+end)
+
+-- ==========================================
+-- MODERN GUI: Draggable, Compact, Blue/Cyan Theme
+-- ==========================================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "DelfinBotGUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = player:FindFirstChildOfClass("PlayerGui") or player:WaitForChild("PlayerGui")
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 250, 0, 350)
+MainFrame.Position = UDim2.new(0.5, -125, 0.5, -175)
+MainFrame.BackgroundColor3 = Color3.fromRGB(10, 20, 30)
+MainFrame.BorderSizePixel = 0
+MainFrame.Parent = ScreenGui
+
+local UICorner = Instance.new("UICorner", MainFrame)
+UICorner.CornerRadius = UDim.new(0, 10)
+
+local UIStroke = Instance.new("UIStroke", MainFrame)
+UIStroke.Color = Color3.fromRGB(0, 255, 255)
+UIStroke.Thickness = 2
+
+local Title = Instance.new("TextLabel", MainFrame)
+Title.Size = UDim2.new(1, 0, 0, 40)
+Title.Position = UDim2.new(0, 0, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Font = Enum.Font.GothamBold
+Title.Text = "🐬 DelfinBot v2.0"
+Title.TextSize = 18
+Title.TextColor3 = Color3.fromRGB(0, 255, 255)
+Title.TextXAlignment = Enum.TextXAlignment.Center
+
+-- Draggable functionality
+local dragging = false
+local dragStart, startPos
+
+MainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = MainFrame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
     end
 end)
 
--- ==========================================
--- TOGGLE HANDLERS
--- ==========================================
-local function updateToggles()
-    updateBaseESP()
-    if _G.AutoGrab then startAutoGrabLoop() end
-    if _G.InfiniteKillAura then startKillAuraLoop() end
-    if _G.BaseOpener then triggerBaseOpener() end
-    if _G.FlyMode then startFly() else stopFly() end
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        MainFrame.Position = UDim2.new(
+            startPos.X.Scale,
+            startPos.X.Offset + delta.X,
+            startPos.Y.Scale,
+            startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+-- Button container
+local ButtonFrame = Instance.new("Frame", MainFrame)
+ButtonFrame.Size = UDim2.new(1, -20, 1, -50)
+ButtonFrame.Position = UDim2.new(0, 10, 0, 45)
+ButtonFrame.BackgroundTransparency = 1
+
+local UIListLayout = Instance.new("UIListLayout", ButtonFrame)
+UIListLayout.Padding = UDim.new(0, 8)
+UIListLayout.FillDirection = Enum.FillDirection.Vertical
+UIListLayout.HorizontalAlignment = Enum.FillDirection.HorizontalAlignment.Center
+
+-- Function to create toggle buttons
+local function createToggleButton(text, toggleKey, callback)
+    local Button = Instance.new("TextButton", ButtonFrame)
+    Button.Size = UDim2.new(0, 200, 0, 35)
+    Button.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+    Button.TextColor3 = Color3.new(1, 1, 1)
+    Button.Font = Enum.Font.Gotham
+    Button.TextSize = 14
+    Button.Text = text
+    Button.AutoButtonColor = false
+
+    local btnCorner = Instance.new("UICorner", Button)
+    btnCorner.CornerRadius = UDim.new(0, 8)
+
+    local function updateColor()
+        if _G[toggleKey] then
+            Button.BackgroundColor3 = Color3.fromRGB(0, 255, 255)
+            Button.TextColor3 = Color3.new(0, 0, 0)
+        else
+            Button.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+            Button.TextColor3 = Color3.new(1, 1, 1)
+        end
+    end
+    updateColor()
+
+    Button.MouseButton1Click:Connect(function()
+        _G[toggleKey] = not _G[toggleKey]
+        updateColor()
+        if callback then callback() end
+    end)
+
+    return Button
 end
 
--- Initial setup
-updateToggles()
+-- Function to create action buttons
+local function createActionButton(text, callback)
+    local Button = Instance.new("TextButton", ButtonFrame)
+    Button.Size = UDim2.new(0, 200, 0, 35)
+    Button.BackgroundColor3 = Color3.fromRGB(100, 30, 30)
+    Button.TextColor3 = Color3.new(1, 1, 1)
+    Button.Font = Enum.Font.GothamBold
+    Button.TextSize = 14
+    Button.Text = text
+    Button.AutoButtonColor = false
 
--- Example: Toggle with a key (e.g., for testing, bind to keys)
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.KeyCode == Enum.KeyCode.F1 then _G.BaseESP = not _G.BaseESP; updateBaseESP() end
-    if input.KeyCode == Enum.KeyCode.F2 then _G.AutoGrab = not _G.AutoGrab; if _G.AutoGrab then startAutoGrabLoop() end end
-    if input.KeyCode == Enum.KeyCode.F3 then _G.InfiniteKillAura = not _G.InfiniteKillAura; if _G.InfiniteKillAura then startKillAuraLoop() end end
-    if input.KeyCode == Enum.KeyCode.F4 then _G.BaseOpener = not _G.BaseOpener; if _G.BaseOpener then triggerBaseOpener() end end
-    if input.KeyCode == Enum.KeyCode.F5 then _G.FlyMode = not _G.FlyMode; if _G.FlyMode then startFly() else stopFly() end end
+    local btnCorner = Instance.new("UICorner", Button)
+    btnCorner.CornerRadius = UDim.new(0, 8)
+
+    Button.MouseButton1Click:Connect(callback)
+
+    return Button
+end
+
+-- Create buttons
+createToggleButton("Toggle Fly", "FlyMode", function()
+    if _G.FlyMode then startFly() else stopFly() end
 end)
+
+createToggleButton("Toggle Auto-Grab", "AutoGrab", function()
+    if _G.AutoGrab then startAutoGrabLoop() end
+end)
+
+createToggleButton("Toggle Kill Aura", "InfiniteKillAura", function()
+    if _G.InfiniteKillAura then startKillAuraLoop() end
+end)
+
+createToggleButton("Toggle Base ESP", "BaseESP", updateBaseESP)
+
+createActionButton("Open Bases", triggerBaseOpener)
+
+createActionButton("Dash Forward", dashForward)
+
+-- ==========================================
+-- INITIAL EXECUTIONS
+-- ==========================================
+updateBaseESP()
+if _G.AutoGrab then startAutoGrabLoop() end
+if _G.InfiniteKillAura then startKillAuraLoop() end
+if _G.FlyMode then startFly() end
 
 -- Anti-AFK
 player.Idled:Connect(function()
