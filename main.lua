@@ -1,8 +1,22 @@
 -- ==========================================
 -- ROBLOX LUAU SCRIPT FOR GAME CHEATS - DELFINBOT V2.0
 -- Features: Base ESP, Auto-Grab, Infinite Kill Aura, Base Opener, Fly, Dash
--- With Modern GUI (Mobile & PC Friendly)
+-- With Modern GUI (Mobile & PC Friendly) and Whitelist System
 -- ==========================================
+
+-- Whitelist System: Define allowed UserIDs here
+local AllowedUsers = {
+    [123456789] = true,  -- Replace with actual UserIDs
+    [987654321] = true,  -- Add more as needed
+}
+
+local player = game:GetService("Players").LocalPlayer
+
+-- Check if player is whitelisted
+if not AllowedUsers[player.UserId] then
+    warn("Acceso Denegado: DelfinBot es Privado")
+    return  -- Exit script without loading anything
+end
 
 -- Bootloader: Wait for game to load
 if not game:IsLoaded() then
@@ -16,7 +30,6 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local player = Players.LocalPlayer
 local character, humanoidRootPart, humanoid
 
 -- ==========================================
@@ -275,6 +288,7 @@ MainFrame.Size = UDim2.new(0, 250, 0, 350)
 MainFrame.Position = UDim2.new(0.5, -125, 0.5, -175)
 MainFrame.BackgroundColor3 = Color3.fromRGB(10, 20, 30)
 MainFrame.BorderSizePixel = 0
+MainFrame.ZIndex = 1
 MainFrame.Parent = ScreenGui
 
 local UICorner = Instance.new("UICorner", MainFrame)
@@ -293,6 +307,7 @@ Title.Text = "🐬 DelfinBot v2.0"
 Title.TextSize = 18
 Title.TextColor3 = Color3.fromRGB(0, 255, 255)
 Title.TextXAlignment = Enum.TextXAlignment.Center
+Title.ZIndex = 2
 
 -- Draggable functionality
 local dragging = false
@@ -323,11 +338,12 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
--- Button container
+-- Button container with UIListLayout
 local ButtonFrame = Instance.new("Frame", MainFrame)
 ButtonFrame.Size = UDim2.new(1, -20, 1, -50)
 ButtonFrame.Position = UDim2.new(0, 10, 0, 45)
 ButtonFrame.BackgroundTransparency = 1
+ButtonFrame.ZIndex = 2
 
 local UIListLayout = Instance.new("UIListLayout", ButtonFrame)
 UIListLayout.Padding = UDim.new(0, 8)
@@ -344,6 +360,7 @@ local function createToggleButton(text, toggleKey, callback)
     Button.TextSize = 14
     Button.Text = text
     Button.AutoButtonColor = false
+    Button.ZIndex = 3
 
     local btnCorner = Instance.new("UICorner", Button)
     btnCorner.CornerRadius = UDim.new(0, 8)
@@ -378,6 +395,7 @@ local function createActionButton(text, callback)
     Button.TextSize = 14
     Button.Text = text
     Button.AutoButtonColor = false
+    Button.ZIndex = 3
 
     local btnCorner = Instance.new("UICorner", Button)
     btnCorner.CornerRadius = UDim.new(0, 8)
