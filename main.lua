@@ -25,6 +25,7 @@ local Config = {
     HelicopterSpeed = 720,
     SpeedMultiplier = 1.5,
     AutoBatRange    = 15,
+    AutoSwingSpeed  = 0.3,
     FlySpeed        = 40,
     TPForwardDist   = 12, -- máximo 10-15 studs por vez
 }
@@ -163,7 +164,7 @@ ScrollFrame.BackgroundTransparency = 1
 ScrollFrame.BorderSizePixel = 0
 ScrollFrame.ScrollBarThickness = 4
 ScrollFrame.ScrollBarImageColor3 = COLORS.Accent
-ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 500)
+ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 350)
 
 local MinBtn = Instance.new("TextButton", HeaderFrame)
 MinBtn.Size = UDim2.new(0, 35, 0, 35)
@@ -675,13 +676,15 @@ local function startAutoBatLoop()
                     local direction = (thrp.Position - hrp.Position).Unit
                     local safeDist = math.min((thrp.Position - hrp.Position).Magnitude, Config.TPForwardDist)
                     tpForwardSafe(safeDist)
-                    bat:Activate()
                 end
+                
+                -- Auto swing: siempre activar el bat independientemente de si hay enemigos
+                bat:Activate()
             end)
             if not ok then
                 warn("Error en AutoBat:", err)
             end
-            task.wait(0.1)
+            task.wait(Config.AutoSwingSpeed or 0.3)
         end
         autoBatRunning = false
     end)
@@ -1415,32 +1418,23 @@ end
 local yStart = 5
 local step  = 52
 
-crearToggle(
-    "Autoplay Brainrots",
-    yStart + step * 0,
-    "AutoPlay",
-    startAutoPlayLoop,
-    {
-        { label = "Velocidad (stud/s)", key = "AutoPlaySpeed" },
-        { label = "TP Forward Dist", key = "TPForwardDist" },
-    },
-    "🧠"
-)
+
 
 crearToggle(
     "Auto Bat (Kill Aura)",
-    yStart + step * 1,
+    yStart + step * 0,
     "AutoBat",
     startAutoBatLoop,
     {
         { label = "Rango Auto Bat", key = "AutoBatRange" },
+        { label = "Velocidad Swing (s)", key = "AutoSwingSpeed" },
     },
     "⚔"
 )
 
 crearToggle(
     "Helicopter Spin",
-    yStart + step * 2,
+    yStart + step * 1,
     "HelicopterSpin",
     startHeliLoop,
     {
@@ -1451,7 +1445,7 @@ crearToggle(
 
 crearToggle(
     "Fly Mode",
-    yStart + step * 3,
+    yStart + step * 2,
     "FlyMode",
     startFlyLoop,
     {
@@ -1462,7 +1456,7 @@ crearToggle(
 
 crearToggle(
     "Infinite Jump",
-    yStart + step * 4,
+    yStart + step * 3,
     "InfiniteJump",
     nil,
     nil,
@@ -1471,7 +1465,7 @@ crearToggle(
 
 crearToggle(
     "CFrame Booster",
-    yStart + step * 5,
+    yStart + step * 4,
     "CFrameBooster",
     startBoostLoop,
     {
@@ -1480,27 +1474,13 @@ crearToggle(
     "⚡"
 )
 
-crearToggle(
-    "Noclip",
-    yStart + step * 6,
-    "Noclip",
-    nil,
-    nil,
-    "👻"
-)
 
-crearToggle(
-    "ESP Visuals",
-    yStart + step * 7,
-    "ESPVisuals",
-    nil,
-    nil,
-    "👁"
-)
+
+
 
 crearBotonAccion(
     "Unload (Limpiar todo)",
-    yStart + step * 8,
+    yStart + step * 5,
     CleanUnload,
     "🗑"
 )
