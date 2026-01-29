@@ -734,39 +734,169 @@ local function startBoostLoop()
 end
 
 -- ==========================================
--- NOCLIP DE SEGURIDAD (RUNSERVICE.STEPPED)
+-- NOCLIP AVANZADO (ANTI-RETURN)
 -- ==========================================
 local noclipRunning = false
-local noclipConn
+local noclipSteppedConn
+local noclipHeartbeatConn
+local noclipHumanoidState = nil
+local noclipAnchoredState = false
 
 local function startNoclip()
     if noclipRunning then return end
     noclipRunning = true
 
-    noclipConn = RunService.Stepped:Connect(function()
+    -- Guardar estado original del Humanoid
+    local ok, err = pcall(function()
+        local _, hrp, humanoid = getCharacterAndHRP()
+        noclipHumanoidState = humanoid:GetState()
+    end)
+
+    -- CONEXIÓN EN STEPPED (antes de cada frame de física)
+    noclipSteppedConn = RunService.Stepped:Connect(function()
         if not _G.Noclip then
-            if noclipConn then
-                noclipConn:Disconnect()
-                noclipConn = nil
-            end
-            noclipRunning = false
+            -- Restaurar estado cuando se desactiva
+            local ok, err = pcall(function()
+                local character = player.Character
+                if character then
+                    local hrp = character:FindFirstChild("HumanoidRootPart")
+                    local humanoid = character:FindFirstChildOfClass("Humanoid")
+                    
+                    if hrp then
+                        hrp.Anchored = false
+                    end
+                    if humanoid then
+                        humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+                    end
+                end
+            end)
             return
         end
 
         local ok, err = pcall(function()
             local character = player.Character
-            if character then
-                for _, part in ipairs(character:GetDescendants()) do
-                    if part:IsA("BasePart") and part.CanCollide then
+            if not character then return end
+
+            local hrp = character:FindFirstChild("HumanoidRootPart")
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+
+            -- 1) CANCOLLIDE = FALSE (en Stepped)
+            for _, part in ipairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    if part.CanCollide then
                         part.CanCollide = false
                     end
                 end
             end
+
+            -- 2) VELOCITY ZEROING (en Stepped)
+            if hrp then
+                hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+            end
+
+            for _, part in ipairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                    part.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                end
+            end
+
+            -- 3) HUMANOID STATE CHANGE (NoPhysics temporalmente)
+            if humanoid then
+                local currentState = humanoid:GetState()
+                if currentState ~= Enum.HumanoidStateType.PhysicsDisabled then
+                    humanoid:ChangeState(Enum.HumanoidStateType.PhysicsDisabled)
+                end
+            end
+
+            -- 4) ANCHORED TOGGLE (solo HRP, brevemente pero más frecuente)
+            if hrp then
+                -- Alternar entre anclado y no anclado muy rápido para evitar que el servidor lo mueva
+                if not noclipAnchoredState then
+                    noclipAnchoredState = true
+                    hrp.Anchored = true
+                    task.spawn(function()
+                        task.wait(0.005) -- 5ms anclado
+                        if hrp and hrp.Parent and _G.Noclip then
+                            hrp.Anchored = false
+                            task.wait(0.005) -- 5ms desanclado
+                            noclipAnchoredState = false
+                        end
+                    end)
+                end
+            end
         end)
         if not ok then
-            warn("Error Noclip:", err)
+            warn("Error Noclip Stepped:", err)
         end
     end)
+
+    -- CONEXIÓN EN HEARTBEAT (doble seguridad)
+    noclipHeartbeatConn = RunService.Heartbeat:Connect(function()
+        if not _G.Noclip then return end
+
+        local ok, err = pcall(function()
+            local character = player.Character
+            if not character then return end
+
+            -- 1) CANCOLLIDE = FALSE (en Heartbeat también)
+            for _, part in ipairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    if part.CanCollide then
+                        part.CanCollide = false
+                    end
+                end
+            end
+
+            -- 2) VELOCITY ZEROING (en Heartbeat también)
+            local hrp = character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+            end
+
+            for _, part in ipairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                    part.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                end
+            end
+        end)
+        if not ok then
+            warn("Error Noclip Heartbeat:", err)
+        end
+    end)
+end
+
+local function stopNoclip()
+    if noclipSteppedConn then
+        noclipSteppedConn:Disconnect()
+        noclipSteppedConn = nil
+    end
+    if noclipHeartbeatConn then
+        noclipHeartbeatConn:Disconnect()
+        noclipHeartbeatConn = nil
+    end
+
+    -- Restaurar estado normal
+    local ok, err = pcall(function()
+        local character = player.Character
+        if character then
+            local hrp = character:FindFirstChild("HumanoidRootPart")
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+
+            if hrp then
+                hrp.Anchored = false
+            end
+            if humanoid then
+                humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+            end
+        end
+    end)
+
+    noclipRunning = false
+    noclipAnchoredState = false
 end
 
 -- ==========================================
@@ -892,8 +1022,8 @@ local function CleanUnload()
 
     updateInfiniteJump()
     clearESP()
+    stopNoclip()
 
-    if noclipConn then noclipConn:Disconnect() noclipConn = nil end
     if antiAfkConn then antiAfkConn:Disconnect() antiAfkConn = nil end
     if uiToggleConn then uiToggleConn:Disconnect() uiToggleConn = nil end
 
@@ -940,6 +1070,8 @@ local function crearToggle(nombre, posicionY, toggleKey, loopStarter, camposConf
         elseif toggleKey == "Noclip" then
             if _G.Noclip then
                 startNoclip()
+            else
+                stopNoclip()
             end
         end
     end)
@@ -1063,4 +1195,3 @@ crearBotonAccion(
     yStart + step * 8,
     CleanUnload
 )
-
