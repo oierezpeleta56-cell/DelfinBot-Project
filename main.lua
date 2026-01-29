@@ -1,4 +1,4 @@
-Delphin hub script: -- ==========================================
+-- ==========================================
 -- SISTEMA DE ACCESO (WHITELIST)
 -- ==========================================
 local IDs_Autorizadas = {
@@ -62,58 +62,153 @@ ScreenGui.ResetOnSpawn = false
 local parentGui = player:FindFirstChildOfClass("PlayerGui") or player:WaitForChild("PlayerGui")
 ScreenGui.Parent = parentGui
 
+-- COLORES MEJORADOS - Tema Oscuro Moderno con Acentos Cyan/Purple
+local COLORS = {
+    Background = Color3.fromRGB(18, 18, 24),        -- Fondo principal oscuro
+    BackgroundSecondary = Color3.fromRGB(25, 25, 35), -- Fondo secundario
+    Accent = Color3.fromRGB(138, 43, 226),          -- Púrpura brillante
+    AccentSecondary = Color3.fromRGB(0, 191, 255),  -- Cyan brillante
+    Text = Color3.fromRGB(240, 240, 245),           -- Texto blanco suave
+    TextDim = Color3.fromRGB(160, 160, 170),        -- Texto atenuado
+    ButtonOff = Color3.fromRGB(35, 35, 45),         -- Botón apagado
+    ButtonOn = Color3.fromRGB(138, 43, 226),        -- Botón encendido (púrpura)
+    ButtonHover = Color3.fromRGB(45, 45, 55),       -- Hover estado
+    Border = Color3.fromRGB(138, 43, 226),          -- Borde púrpura
+    BorderGlow = Color3.fromRGB(0, 191, 255),       -- Borde glow cyan
+    Success = Color3.fromRGB(46, 213, 115),         -- Verde éxito
+    Warning = Color3.fromRGB(255, 159, 67),         -- Naranja advertencia
+    Danger = Color3.fromRGB(255, 71, 87),           -- Rojo peligro
+}
+
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 350, 0, 450)
-MainFrame.Position = UDim2.new(0.5, -175, 0.5, -225)
-MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+MainFrame.Size = UDim2.new(0, 380, 0, 480)
+MainFrame.Position = UDim2.new(0.5, -190, 0.5, -240)
+MainFrame.BackgroundColor3 = COLORS.Background
 MainFrame.BorderSizePixel = 0
 MainFrame.Parent = ScreenGui
 
 local UICorner = Instance.new("UICorner", MainFrame)
-UICorner.CornerRadius = UDim.new(0, 10)
+UICorner.CornerRadius = UDim.new(0, 12)
 
+-- Borde con gradiente visual
 local UIStroke = Instance.new("UIStroke", MainFrame)
-UIStroke.Color = Color3.fromRGB(0, 255, 255)
-UIStroke.Thickness = 1.5
+UIStroke.Color = COLORS.Border
+UIStroke.Thickness = 2
+UIStroke.Transparency = 0.3
 
-local Title = Instance.new("TextLabel", MainFrame)
-Title.Size = UDim2.new(1, -60, 0, 40)
-Title.Position = UDim2.new(0, 10, 0, 5)
+-- Sombra suave
+local Shadow = Instance.new("ImageLabel", MainFrame)
+Shadow.Name = "Shadow"
+Shadow.AnchorPoint = Vector2.new(0.5, 0.5)
+Shadow.BackgroundTransparency = 1
+Shadow.Position = UDim2.new(0.5, 0, 0.5, 0)
+Shadow.Size = UDim2.new(1, 30, 1, 30)
+Shadow.ZIndex = 0
+Shadow.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
+Shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
+Shadow.ImageTransparency = 0.7
+
+-- Header con gradiente
+local HeaderFrame = Instance.new("Frame", MainFrame)
+HeaderFrame.Size = UDim2.new(1, 0, 0, 55)
+HeaderFrame.BackgroundColor3 = COLORS.BackgroundSecondary
+HeaderFrame.BorderSizePixel = 0
+
+local HeaderCorner = Instance.new("UICorner", HeaderFrame)
+HeaderCorner.CornerRadius = UDim.new(0, 12)
+
+local HeaderGradient = Instance.new("UIGradient", HeaderFrame)
+HeaderGradient.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, COLORS.Accent),
+    ColorSequenceKeypoint.new(1, COLORS.AccentSecondary)
+}
+HeaderGradient.Rotation = 45
+HeaderGradient.Transparency = NumberSequence.new{
+    NumberSequenceKeypoint.new(0, 0.85),
+    NumberSequenceKeypoint.new(1, 0.95)
+}
+
+local Title = Instance.new("TextLabel", HeaderFrame)
+Title.Size = UDim2.new(1, -70, 0, 55)
+Title.Position = UDim2.new(0, 20, 0, 0)
 Title.BackgroundTransparency = 1
 Title.Font = Enum.Font.GothamBold
-Title.Text = "DelfinBot Panel"
-Title.TextSize = 20
-Title.TextColor3 = Color3.fromRGB(0, 255, 255)
+Title.Text = "🐬 DELFIN HUB"
+Title.TextSize = 22
+Title.TextColor3 = COLORS.Text
 Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.TextStrokeTransparency = 0.8
+Title.TextStrokeColor3 = COLORS.Accent
+
+-- Subtítulo
+local Subtitle = Instance.new("TextLabel", HeaderFrame)
+Subtitle.Size = UDim2.new(1, -70, 0, 20)
+Subtitle.Position = UDim2.new(0, 20, 0, 32)
+Subtitle.BackgroundTransparency = 1
+Subtitle.Font = Enum.Font.Gotham
+Subtitle.Text = "Advanced Control Panel"
+Subtitle.TextSize = 11
+Subtitle.TextColor3 = COLORS.TextDim
+Subtitle.TextXAlignment = Enum.TextXAlignment.Left
 
 local ButtonsFrame = Instance.new("Frame", MainFrame)
-ButtonsFrame.Size = UDim2.new(1, 0, 1, -55)
-ButtonsFrame.Position = UDim2.new(0, 0, 0, 50)
+ButtonsFrame.Size = UDim2.new(1, -20, 1, -70)
+ButtonsFrame.Position = UDim2.new(0, 10, 0, 60)
 ButtonsFrame.BackgroundTransparency = 1
 
-local MinBtn = Instance.new("TextButton", MainFrame)
-MinBtn.Size = UDim2.new(0, 30, 0, 30)
-MinBtn.Position = UDim2.new(1, -40, 0, 10)
-MinBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-MinBtn.TextColor3 = Color3.new(1,1,1)
-MinBtn.Text = "-"
-MinBtn.Font = Enum.Font.GothamBold
-MinBtn.TextSize = 18
-local MinCorner = Instance.new("UICorner", MinBtn)
-MinCorner.CornerRadius = UDim.new(1, 0)
+-- ScrollingFrame para más espacio
+local ScrollFrame = Instance.new("ScrollingFrame", ButtonsFrame)
+ScrollFrame.Size = UDim2.new(1, 0, 1, 0)
+ScrollFrame.BackgroundTransparency = 1
+ScrollFrame.BorderSizePixel = 0
+ScrollFrame.ScrollBarThickness = 4
+ScrollFrame.ScrollBarImageColor3 = COLORS.Accent
+ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 500)
 
-local expandedSize  = UDim2.new(0, 350, 0, 450)
-local collapsedSize = UDim2.new(0, 350, 0, 60)
+local MinBtn = Instance.new("TextButton", HeaderFrame)
+MinBtn.Size = UDim2.new(0, 35, 0, 35)
+MinBtn.Position = UDim2.new(1, -45, 0, 10)
+MinBtn.BackgroundColor3 = COLORS.ButtonOff
+MinBtn.TextColor3 = COLORS.Text
+MinBtn.Text = "━"
+MinBtn.Font = Enum.Font.GothamBold
+MinBtn.TextSize = 16
+local MinCorner = Instance.new("UICorner", MinBtn)
+MinCorner.CornerRadius = UDim.new(0, 8)
+
+local MinStroke = Instance.new("UIStroke", MinBtn)
+MinStroke.Color = COLORS.Border
+MinStroke.Thickness = 1.5
+MinStroke.Transparency = 0.5
+
+local expandedSize  = UDim2.new(0, 380, 0, 480)
+local collapsedSize = UDim2.new(0, 380, 0, 65)
 local minimized = false
 
 MinBtn.MouseButton1Click:Connect(function()
     minimized = not minimized
     ButtonsFrame.Visible = not minimized
+    MinBtn.Text = minimized and "+" or "━"
     TweenService:Create(
         MainFrame,
-        TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
         { Size = minimized and collapsedSize or expandedSize }
     ):Play()
+end)
+
+-- Efecto hover en minimizar
+MinBtn.MouseEnter:Connect(function()
+    TweenService:Create(MinBtn, TweenInfo.new(0.2), {
+        BackgroundColor3 = COLORS.ButtonHover,
+        TextColor3 = COLORS.AccentSecondary
+    }):Play()
+end)
+
+MinBtn.MouseLeave:Connect(function()
+    TweenService:Create(MinBtn, TweenInfo.new(0.2), {
+        BackgroundColor3 = COLORS.ButtonOff,
+        TextColor3 = COLORS.Text
+    }):Play()
 end)
 
 -- UI Draggable
@@ -148,7 +243,7 @@ do
     end
 
     MainFrame.InputBegan:Connect(onInputBegan)
-    Title.InputBegan:Connect(onInputBegan)
+    HeaderFrame.InputBegan:Connect(onInputBegan)
     UIS.InputChanged:Connect(onInputChanged)
 end
 
@@ -160,58 +255,104 @@ local ConfigFrame
 local function crearConfigPopup(nombre, campos)
     if not ConfigFrame then
         ConfigFrame = Instance.new("Frame")
-        ConfigFrame.Size = UDim2.new(0, 260, 0, 230)
-        ConfigFrame.Position = UDim2.new(0.5, -130, 0.5, -115)
-        ConfigFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+        ConfigFrame.Size = UDim2.new(0, 300, 0, 250)
+        ConfigFrame.Position = UDim2.new(0.5, -150, 0.5, -125)
+        ConfigFrame.BackgroundColor3 = COLORS.Background
         ConfigFrame.BorderSizePixel = 0
         ConfigFrame.Visible = false
+        ConfigFrame.ZIndex = 100
         ConfigFrame.Parent = ScreenGui
 
         local corner = Instance.new("UICorner", ConfigFrame)
-        corner.CornerRadius = UDim.new(0, 10)
+        corner.CornerRadius = UDim.new(0, 12)
 
         local stroke = Instance.new("UIStroke", ConfigFrame)
-        stroke.Color = Color3.fromRGB(0, 200, 255)
-        stroke.Thickness = 1.5
+        stroke.Color = COLORS.Accent
+        stroke.Thickness = 2
+        stroke.Transparency = 0.3
 
-        local header = Instance.new("TextLabel", ConfigFrame)
+        -- Header del popup
+        local popupHeader = Instance.new("Frame", ConfigFrame)
+        popupHeader.Size = UDim2.new(1, 0, 0, 45)
+        popupHeader.BackgroundColor3 = COLORS.BackgroundSecondary
+        popupHeader.BorderSizePixel = 0
+
+        local popupHeaderCorner = Instance.new("UICorner", popupHeader)
+        popupHeaderCorner.CornerRadius = UDim.new(0, 12)
+
+        local popupGradient = Instance.new("UIGradient", popupHeader)
+        popupGradient.Color = ColorSequence.new{
+            ColorSequenceKeypoint.new(0, COLORS.AccentSecondary),
+            ColorSequenceKeypoint.new(1, COLORS.Accent)
+        }
+        popupGradient.Rotation = -45
+        popupGradient.Transparency = NumberSequence.new{
+            NumberSequenceKeypoint.new(0, 0.85),
+            NumberSequenceKeypoint.new(1, 0.95)
+        }
+
+        local header = Instance.new("TextLabel", popupHeader)
         header.Name = "Header"
-        header.Size = UDim2.new(1, -40, 0, 30)
-        header.Position = UDim2.new(0, 10, 0, 5)
+        header.Size = UDim2.new(1, -50, 0, 45)
+        header.Position = UDim2.new(0, 15, 0, 0)
         header.BackgroundTransparency = 1
         header.Font = Enum.Font.GothamBold
-        header.TextSize = 18
-        header.TextColor3 = Color3.fromRGB(0, 255, 255)
+        header.TextSize = 16
+        header.TextColor3 = COLORS.Text
         header.TextXAlignment = Enum.TextXAlignment.Left
 
-        local closeBtn = Instance.new("TextButton", ConfigFrame)
+        local closeBtn = Instance.new("TextButton", popupHeader)
         closeBtn.Size = UDim2.new(0, 30, 0, 30)
-        closeBtn.Position = UDim2.new(1, -35, 0, 5)
-        closeBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-        closeBtn.TextColor3 = Color3.new(1,1,1)
-        closeBtn.Text = "X"
+        closeBtn.Position = UDim2.new(1, -40, 0, 7.5)
+        closeBtn.BackgroundColor3 = COLORS.Danger
+        closeBtn.TextColor3 = COLORS.Text
+        closeBtn.Text = "✕"
         closeBtn.Font = Enum.Font.GothamBold
         closeBtn.TextSize = 16
         local closeCorner = Instance.new("UICorner", closeBtn)
-        closeCorner.CornerRadius = UDim.new(1, 0)
+        closeCorner.CornerRadius = UDim.new(0, 8)
+
+        local closeStroke = Instance.new("UIStroke", closeBtn)
+        closeStroke.Color = COLORS.Danger
+        closeStroke.Thickness = 1.5
+        closeStroke.Transparency = 0.5
 
         closeBtn.MouseButton1Click:Connect(function()
+            TweenService:Create(ConfigFrame, TweenInfo.new(0.2), {
+                Size = UDim2.new(0, 0, 0, 0),
+                Position = UDim2.new(0.5, 0, 0.5, 0)
+            }):Play()
+            task.wait(0.2)
             ConfigFrame.Visible = false
+            ConfigFrame.Size = UDim2.new(0, 300, 0, 250)
+            ConfigFrame.Position = UDim2.new(0.5, -150, 0.5, -125)
+        end)
+
+        closeBtn.MouseEnter:Connect(function()
+            TweenService:Create(closeBtn, TweenInfo.new(0.2), {
+                BackgroundColor3 = Color3.fromRGB(255, 100, 110)
+            }):Play()
+        end)
+
+        closeBtn.MouseLeave:Connect(function()
+            TweenService:Create(closeBtn, TweenInfo.new(0.2), {
+                BackgroundColor3 = COLORS.Danger
+            }):Play()
         end)
 
         local camposContainer = Instance.new("Frame", ConfigFrame)
         camposContainer.Name = "Campos"
-        camposContainer.Size = UDim2.new(1, -20, 1, -50)
-        camposContainer.Position = UDim2.new(0, 10, 0, 45)
+        camposContainer.Size = UDim2.new(1, -30, 1, -60)
+        camposContainer.Position = UDim2.new(0, 15, 0, 50)
         camposContainer.BackgroundTransparency = 1
 
         local uiList = Instance.new("UIListLayout", camposContainer)
-        uiList.Padding = UDim.new(0, 8)
+        uiList.Padding = UDim.new(0, 10)
         uiList.FillDirection = Enum.FillDirection.Vertical
         uiList.SortOrder = Enum.SortOrder.LayoutOrder
     end
 
-    ConfigFrame.Header.Text = "Config: " .. nombre
+    ConfigFrame.Campos.Parent.Header.Text = "⚙️ " .. nombre
 
     for _, child in ipairs(ConfigFrame.Campos:GetChildren()) do
         if child:IsA("Frame") then child:Destroy() end
@@ -219,32 +360,51 @@ local function crearConfigPopup(nombre, campos)
 
     for _, info in ipairs(campos or {}) do
         local row = Instance.new("Frame", ConfigFrame.Campos)
-        row.Size = UDim2.new(1, 0, 0, 40)
+        row.Size = UDim2.new(1, 0, 0, 45)
         row.BackgroundTransparency = 1
 
         local label = Instance.new("TextLabel", row)
-        label.Size = UDim2.new(0.55, 0, 1, 0)
+        label.Size = UDim2.new(0.6, 0, 1, 0)
         label.BackgroundTransparency = 1
         label.Font = Enum.Font.Gotham
-        label.TextSize = 14
-        label.TextColor3 = Color3.new(1,1,1)
+        label.TextSize = 13
+        label.TextColor3 = COLORS.Text
         label.TextXAlignment = Enum.TextXAlignment.Left
         label.Text = info.label
 
         local input = Instance.new("TextBox", row)
-        input.Size = UDim2.new(0.4, 0, 1, 0)
-        input.Position = UDim2.new(0.6, 0, 0, 0)
-        input.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-        input.TextColor3 = Color3.new(1, 1, 1)
-        input.Font = Enum.Font.Gotham
+        input.Size = UDim2.new(0.35, 0, 0.7, 0)
+        input.Position = UDim2.new(0.65, 0, 0.15, 0)
+        input.BackgroundColor3 = COLORS.ButtonOff
+        input.TextColor3 = COLORS.Text
+        input.Font = Enum.Font.GothamBold
         input.TextSize = 14
         input.ClearTextOnFocus = false
         input.Text = tostring(Config[info.key] or "")
+        input.PlaceholderText = "..."
+        input.PlaceholderColor3 = COLORS.TextDim
 
         local inputCorner = Instance.new("UICorner", input)
-        inputCorner.CornerRadius = UDim.new(0, 6)
+        inputCorner.CornerRadius = UDim.new(0, 8)
+
+        local inputStroke = Instance.new("UIStroke", input)
+        inputStroke.Color = COLORS.Border
+        inputStroke.Thickness = 1.5
+        inputStroke.Transparency = 0.7
+
+        input.Focused:Connect(function()
+            TweenService:Create(inputStroke, TweenInfo.new(0.2), {
+                Transparency = 0.2,
+                Color = COLORS.AccentSecondary
+            }):Play()
+        end)
 
         input.FocusLost:Connect(function()
+            TweenService:Create(inputStroke, TweenInfo.new(0.2), {
+                Transparency = 0.7,
+                Color = COLORS.Border
+            }):Play()
+            
             local num = tonumber(input.Text)
             if num then
                 Config[info.key] = num
@@ -256,6 +416,12 @@ local function crearConfigPopup(nombre, campos)
     end
 
     ConfigFrame.Visible = true
+    ConfigFrame.Size = UDim2.new(0, 0, 0, 0)
+    ConfigFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+    TweenService:Create(ConfigFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back), {
+        Size = UDim2.new(0, 300, 0, 250),
+        Position = UDim2.new(0.5, -150, 0.5, -125)
+    }):Play()
 end
 
 -- ==========================================
@@ -324,14 +490,12 @@ end
 -- INSTANT STEAL (BUSCAR REMOTEEVENTS)
 -- ==========================================
 local function findStealRemote()
-    -- Buscar RemoteEvents comunes para recolectar items
     local possibleNames = {
         "CollectItem", "PickupItem", "GrabItem", "TakeItem",
         "CollectBrainrots", "PickupBrainrots", "StealItem",
         "RemoteEvent", "Collect", "Pickup"
     }
 
-    -- Buscar en ReplicatedStorage primero
     for _, name in ipairs(possibleNames) do
         local remote = ReplicatedStorage:FindFirstChild(name)
         if remote and remote:IsA("RemoteEvent") then
@@ -339,7 +503,6 @@ local function findStealRemote()
         end
     end
 
-    -- Buscar en workspace
     for _, name in ipairs(possibleNames) do
         local remote = workspace:FindFirstChild(name, true)
         if remote and remote:IsA("RemoteEvent") then
@@ -372,7 +535,6 @@ local function tpForwardSafe(distance)
     local direction = cam.CFrame.LookVector
     local targetPos = hrp.Position + direction * distance
 
-    -- Usar LinearVelocity para mover físicamente
     if not flyLinearVelocity then
         flyAttachment = Instance.new("Attachment", hrp)
         flyLinearVelocity = Instance.new("LinearVelocity", hrp)
@@ -416,7 +578,6 @@ local function startAutoPlayLoop()
                     return
                 end
 
-                -- Ir al brainrots usando TP seguro
                 local brainPos = brain.Position + Vector3.new(0, 3, 0)
                 local distToBrain = (brainPos - hrp.Position).Magnitude
 
@@ -426,14 +587,12 @@ local function startAutoPlayLoop()
                     task.wait(0.05)
                 end
 
-                -- Cuando estamos cerca, intentar instant steal
                 if distToBrain <= 5 then
                     instantSteal(brain)
                 end
 
                 if not _G.AutoPlay then return end
 
-                -- Volver a la base usando TP seguro
                 local basePos = basePart.Position + Vector3.new(0, 3, 0)
                 local distToBase = (basePos - hrp.Position).Magnitude
 
@@ -513,7 +672,6 @@ local function startAutoBatLoop()
 
                 if nearestEnemy then
                     local thrp = nearestEnemy.HumanoidRootPart
-                    -- Usar TP seguro en lugar de CFrame directo
                     local direction = (thrp.Position - hrp.Position).Unit
                     local safeDist = math.min((thrp.Position - hrp.Position).Magnitude, Config.TPForwardDist)
                     tpForwardSafe(safeDist)
@@ -542,7 +700,6 @@ local function startHeliLoop()
             local ok, err = pcall(function()
                 local _, hrp = getCharacterAndHRP()
 
-                -- Crear AngularVelocity si no existe
                 if not heliAngularVelocity then
                     heliAttachment = Instance.new("Attachment", hrp)
                     heliAngularVelocity = Instance.new("AngularVelocity", hrp)
@@ -560,7 +717,6 @@ local function startHeliLoop()
             task.wait()
         end
 
-        -- Limpiar al salir
         if heliAngularVelocity then
             heliAngularVelocity:Destroy()
             heliAngularVelocity = nil
@@ -588,7 +744,6 @@ local function startFlyLoop()
         lastFlyHumanoid = humanoid
         humanoid.PlatformStand = true
 
-        -- Crear LinearVelocity para Fly
         if not flyLinearVelocity then
             flyAttachment = Instance.new("Attachment", hrp)
             flyLinearVelocity = Instance.new("LinearVelocity", hrp)
@@ -636,7 +791,6 @@ local function startFlyLoop()
             end
         end
 
-        -- Limpiar Fly
         if flyLinearVelocity then
             flyLinearVelocity:Destroy()
             flyLinearVelocity = nil
@@ -684,7 +838,6 @@ local function startBoostLoop()
     boostRunning = true
 
     task.spawn(function()
-        -- Crear LinearVelocity para Booster
         if not boostLinearVelocity then
             boostAttachment = Instance.new("Attachment")
             boostLinearVelocity = Instance.new("LinearVelocity")
@@ -697,7 +850,6 @@ local function startBoostLoop()
             local ok, err = pcall(function()
                 local _, hrp, humanoid = getCharacterAndHRP()
 
-                -- Asegurar que el Attachment esté en HRP
                 if boostAttachment.Parent ~= hrp then
                     boostAttachment.Parent = hrp
                     boostLinearVelocity.Parent = hrp
@@ -720,7 +872,6 @@ local function startBoostLoop()
             end
         end
 
-        -- Limpiar Booster
         if boostLinearVelocity then
             boostLinearVelocity:Destroy()
             boostLinearVelocity = nil
@@ -744,16 +895,13 @@ local noclipLastPosition = nil
 local noclipCollisionGroup = "NoclipGroup"
 local noclipOriginalGroups = {}
 
--- Crear CollisionGroup que no colisiona con nada
 local function setupCollisionGroups()
     local physicsService = game:GetService("PhysicsService")
     
-    -- Crear grupo de colisión personalizado
     local success, err = pcall(function()
         physicsService:RegisterCollisionGroup(noclipCollisionGroup)
     end)
     
-    -- Hacer que no colisione con ningún grupo existente
     for _, groupName in ipairs(physicsService:GetRegisteredCollisionGroups()) do
         if groupName.Name ~= noclipCollisionGroup then
             pcall(function()
@@ -769,7 +917,6 @@ local function startNoclip()
     if noclipRunning then return end
     noclipRunning = true
 
-    -- Guardar grupos de colisión originales
     local ok, err = pcall(function()
         local character = player.Character
         if character then
@@ -781,7 +928,6 @@ local function startNoclip()
         end
     end)
 
-    -- CONEXIÓN EN STEPPED (ANTES de la física del servidor)
     noclipSteppedConn = RunService.Stepped:Connect(function()
         if not _G.Noclip then return end
 
@@ -795,7 +941,6 @@ local function startNoclip()
 
             if not hrp or not humanoid then return end
 
-            -- 1) COLLISIONGROUP BYPASS
             local physicsService = game:GetService("PhysicsService")
             for _, part in ipairs(character:GetDescendants()) do
                 if part:IsA("BasePart") then
@@ -805,14 +950,12 @@ local function startNoclip()
                 end
             end
 
-            -- 2) CANCOLLIDE = FALSE (Stepped)
             for _, part in ipairs(character:GetDescendants()) do
                 if part:IsA("BasePart") then
                     part.CanCollide = false
                 end
             end
 
-            -- 3) REMOVE VELOCITY (todas las partes)
             hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
             hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
             hrp.Velocity = Vector3.new(0, 0, 0)
@@ -829,23 +972,18 @@ local function startNoclip()
                 end
             end
 
-            -- 4) STATE MACHINE MANIPULATION (cambiar constantemente)
             humanoid:ChangeState(Enum.HumanoidStateType.PhysicsDisabled)
 
-            -- 5) HRP DISPLACEMENT (detectar rubberband y contrarrestar)
             if noclipLastPosition then
                 local currentPos = hrp.Position
                 local distance = (currentPos - noclipLastPosition).Magnitude
                 
-                -- Si el servidor nos movió más de 1.5 studs, verificar si es rubberband
                 if distance > 1.5 then
                     local direction = (currentPos - noclipLastPosition)
-                    -- Si nos movimos hacia atrás (dirección negativa respecto a la cámara), contrarrestar
                     if cam then
                         local forwardDir = cam.CFrame.LookVector
                         local dot = direction.Unit:Dot(forwardDir)
-                        if dot < -0.3 then -- Movimiento hacia atrás detectado
-                            -- Forzar posición 0.15 studs hacia adelante usando CFrame
+                        if dot < -0.3 then
                             hrp.CFrame = hrp.CFrame * CFrame.new(forwardDir * 0.15)
                         end
                     end
@@ -858,7 +996,6 @@ local function startNoclip()
         end
     end)
 
-    -- CONEXIÓN EN HEARTBEAT (DESPUÉS de la física del servidor)
     noclipHeartbeatConn = RunService.Heartbeat:Connect(function()
         if not _G.Noclip then return end
 
@@ -871,7 +1008,6 @@ local function startNoclip()
 
             if not hrp or not humanoid then return end
 
-            -- 1) COLLISIONGROUP BYPASS (Heartbeat)
             local physicsService = game:GetService("PhysicsService")
             for _, part in ipairs(character:GetDescendants()) do
                 if part:IsA("BasePart") then
@@ -881,14 +1017,12 @@ local function startNoclip()
                 end
             end
 
-            -- 2) CANCOLLIDE = FALSE (Heartbeat)
             for _, part in ipairs(character:GetDescendants()) do
                 if part:IsA("BasePart") then
                     part.CanCollide = false
                 end
             end
 
-            -- 3) REMOVE VELOCITY (Heartbeat)
             hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
             hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
             hrp.Velocity = Vector3.new(0, 0, 0)
@@ -905,7 +1039,6 @@ local function startNoclip()
                 end
             end
 
-            -- 4) STATE MACHINE MANIPULATION (Heartbeat)
             humanoid:ChangeState(Enum.HumanoidStateType.Physics)
         end)
         if not ok then
@@ -913,7 +1046,6 @@ local function startNoclip()
         end
     end)
 
-    -- CONEXIÓN EN RENDERSTEPPED (triple seguridad)
     noclipRenderConn = RunService.RenderStepped:Connect(function()
         if not _G.Noclip then return end
 
@@ -924,14 +1056,12 @@ local function startNoclip()
             local hrp = character:FindFirstChild("HumanoidRootPart")
             if not hrp then return end
 
-            -- CANCOLLIDE = FALSE (RenderStepped)
             for _, part in ipairs(character:GetDescendants()) do
                 if part:IsA("BasePart") then
                     part.CanCollide = false
                 end
             end
 
-            -- REMOVE VELOCITY (RenderStepped)
             hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
             hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
         end)
@@ -955,7 +1085,6 @@ local function stopNoclip()
         noclipRenderConn = nil
     end
 
-    -- Restaurar estado normal
     local ok, err = pcall(function()
         local character = player.Character
         if character then
@@ -963,7 +1092,6 @@ local function stopNoclip()
             local humanoid = character:FindFirstChildOfClass("Humanoid")
             local physicsService = game:GetService("PhysicsService")
 
-            -- Restaurar grupos de colisión originales
             for part, originalGroupId in pairs(noclipOriginalGroups) do
                 if part and part.Parent then
                     pcall(function()
@@ -973,7 +1101,6 @@ local function stopNoclip()
             end
             noclipOriginalGroups = {}
 
-            -- Restaurar CanCollide
             for _, part in ipairs(character:GetDescendants()) do
                 if part:IsA("BasePart") then
                     part.CanCollide = true
@@ -1015,7 +1142,7 @@ local function addESPForPart(part)
     text.Center = true
     text.Outline = true
     text.Size = 14
-    text.Color = Color3.fromRGB(0, 255, 255)
+    text.Color = Color3.fromRGB(138, 43, 226)
     text.Text = TARGET_NAME
     text.Visible = false
     espObjects[part] = text
@@ -1082,12 +1209,12 @@ uiToggleConn = UIS.InputBegan:Connect(function(input, gpe)
     if input.KeyCode == Enum.KeyCode.RightControl then
         uiHidden = not uiHidden
         local targetPos = uiHidden
-            and UDim2.new(0.5, -175, 1.1, 0)
-            or  UDim2.new(0.5, -175, 0.5, -225)
+            and UDim2.new(0.5, -190, 1.2, 0)
+            or  UDim2.new(0.5, -190, 0.5, -240)
 
         TweenService:Create(
             MainFrame,
-            TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
             { Position = targetPos }
         ):Play()
     end
@@ -1106,7 +1233,6 @@ local function CleanUnload()
     _G.ESPVisuals     = false
     _G.Noclip         = false
 
-    -- Limpiar todos los objetos de física
     if flyLinearVelocity then flyLinearVelocity:Destroy() flyLinearVelocity = nil end
     if flyAttachment then flyAttachment:Destroy() flyAttachment = nil end
     if boostLinearVelocity then boostLinearVelocity:Destroy() boostLinearVelocity = nil end
@@ -1127,26 +1253,54 @@ end
 -- ==========================================
 -- CREACIÓN DE BOTONES (TOGGLES REALES)
 -- ==========================================
-local function crearToggle(nombre, posicionY, toggleKey, loopStarter, camposConfig)
-    local Btn = Instance.new("TextButton", ButtonsFrame)
-    Btn.Text = nombre
-    Btn.Size = UDim2.new(0.7, 0, 0, 40)
-    Btn.Position = UDim2.new(0.05, 0, 0, posicionY)
-    Btn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    Btn.TextColor3 = Color3.new(1,1,1)
-    Btn.Font = Enum.Font.Gotham
-    Btn.TextSize = 14
+local function crearToggle(nombre, posicionY, toggleKey, loopStarter, camposConfig, emoji)
+    local Btn = Instance.new("TextButton", ScrollFrame)
+    Btn.Text = (emoji or "●") .. "  " .. nombre
+    Btn.Size = UDim2.new(0.68, 0, 0, 45)
+    Btn.Position = UDim2.new(0.02, 0, 0, posicionY)
+    Btn.BackgroundColor3 = COLORS.ButtonOff
+    Btn.TextColor3 = COLORS.Text
+    Btn.Font = Enum.Font.GothamBold
+    Btn.TextSize = 13
+    Btn.TextXAlignment = Enum.TextXAlignment.Left
+    Btn.TextTruncate = Enum.TextTruncate.AtEnd
 
     local btnCorner = Instance.new("UICorner", Btn)
-    btnCorner.CornerRadius = UDim.new(0, 8)
+    btnCorner.CornerRadius = UDim.new(0, 10)
+
+    local btnStroke = Instance.new("UIStroke", Btn)
+    btnStroke.Color = COLORS.Border
+    btnStroke.Thickness = 1.5
+    btnStroke.Transparency = 0.7
+
+    local btnGradient = Instance.new("UIGradient", Btn)
+    btnGradient.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(40, 40, 50)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(30, 30, 40))
+    }
+    btnGradient.Rotation = 90
 
     local function actualizarColor()
         if _G[toggleKey] then
-            Btn.BackgroundColor3 = Color3.fromRGB(0, 255, 255)
-            Btn.TextColor3 = Color3.new(0,0,0)
+            TweenService:Create(Btn, TweenInfo.new(0.3), {
+                BackgroundColor3 = COLORS.ButtonOn
+            }):Play()
+            TweenService:Create(btnStroke, TweenInfo.new(0.3), {
+                Transparency = 0.2,
+                Color = COLORS.AccentSecondary
+            }):Play()
+            Btn.TextColor3 = COLORS.Text
+            btnGradient.Enabled = false
         else
-            Btn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-            Btn.TextColor3 = Color3.new(1,1,1)
+            TweenService:Create(Btn, TweenInfo.new(0.3), {
+                BackgroundColor3 = COLORS.ButtonOff
+            }):Play()
+            TweenService:Create(btnStroke, TweenInfo.new(0.3), {
+                Transparency = 0.7,
+                Color = COLORS.Border
+            }):Play()
+            Btn.TextColor3 = COLORS.Text
+            btnGradient.Enabled = true
         end
     end
     actualizarColor()
@@ -1170,35 +1324,87 @@ local function crearToggle(nombre, posicionY, toggleKey, loopStarter, camposConf
         end
     end)
 
-    local PlusBtn = Instance.new("TextButton", ButtonsFrame)
-    PlusBtn.Text = "+"
-    PlusBtn.Size = UDim2.new(0, 40, 0, 40)
-    PlusBtn.Position = UDim2.new(0.8, 0, 0, posicionY)
-    PlusBtn.BackgroundColor3 = Color3.fromRGB(0, 255, 255)
-    PlusBtn.TextColor3 = Color3.new(0,0,0)
+    Btn.MouseEnter:Connect(function()
+        if not _G[toggleKey] then
+            TweenService:Create(Btn, TweenInfo.new(0.2), {
+                BackgroundColor3 = COLORS.ButtonHover
+            }):Play()
+        end
+    end)
+
+    Btn.MouseLeave:Connect(function()
+        if not _G[toggleKey] then
+            TweenService:Create(Btn, TweenInfo.new(0.2), {
+                BackgroundColor3 = COLORS.ButtonOff
+            }):Play()
+        end
+    end)
+
+    local PlusBtn = Instance.new("TextButton", ScrollFrame)
+    PlusBtn.Text = "⚙"
+    PlusBtn.Size = UDim2.new(0, 45, 0, 45)
+    PlusBtn.Position = UDim2.new(0.72, 0, 0, posicionY)
+    PlusBtn.BackgroundColor3 = COLORS.Accent
+    PlusBtn.TextColor3 = COLORS.Text
     PlusBtn.Font = Enum.Font.GothamBold
-    PlusBtn.TextSize = 20
+    PlusBtn.TextSize = 18
 
     local plusCorner = Instance.new("UICorner", PlusBtn)
-    plusCorner.CornerRadius = UDim.new(1, 0)
+    plusCorner.CornerRadius = UDim.new(0, 10)
+
+    local plusStroke = Instance.new("UIStroke", PlusBtn)
+    plusStroke.Color = COLORS.AccentSecondary
+    plusStroke.Thickness = 1.5
+    plusStroke.Transparency = 0.5
+
+    PlusBtn.MouseEnter:Connect(function()
+        TweenService:Create(PlusBtn, TweenInfo.new(0.2), {
+            BackgroundColor3 = Color3.fromRGB(160, 60, 255),
+            Rotation = 90
+        }):Play()
+    end)
+
+    PlusBtn.MouseLeave:Connect(function()
+        TweenService:Create(PlusBtn, TweenInfo.new(0.2), {
+            BackgroundColor3 = COLORS.Accent,
+            Rotation = 0
+        }):Play()
+    end)
 
     PlusBtn.MouseButton1Click:Connect(function()
         crearConfigPopup(nombre, camposConfig)
     end)
 end
 
-local function crearBotonAccion(nombre, posicionY, callback)
-    local Btn = Instance.new("TextButton", ButtonsFrame)
-    Btn.Text = nombre
-    Btn.Size = UDim2.new(0.9, 0, 0, 40)
-    Btn.Position = UDim2.new(0.05, 0, 0, posicionY)
-    Btn.BackgroundColor3 = Color3.fromRGB(120, 30, 30)
-    Btn.TextColor3 = Color3.new(1,1,1)
+local function crearBotonAccion(nombre, posicionY, callback, emoji)
+    local Btn = Instance.new("TextButton", ScrollFrame)
+    Btn.Text = (emoji or "⚠") .. "  " .. nombre
+    Btn.Size = UDim2.new(0.96, 0, 0, 45)
+    Btn.Position = UDim2.new(0.02, 0, 0, posicionY)
+    Btn.BackgroundColor3 = COLORS.Danger
+    Btn.TextColor3 = COLORS.Text
     Btn.Font = Enum.Font.GothamBold
     Btn.TextSize = 14
 
     local btnCorner = Instance.new("UICorner", Btn)
-    btnCorner.CornerRadius = UDim.new(0, 8)
+    btnCorner.CornerRadius = UDim.new(0, 10)
+
+    local btnStroke = Instance.new("UIStroke", Btn)
+    btnStroke.Color = Color3.fromRGB(255, 100, 110)
+    btnStroke.Thickness = 2
+    btnStroke.Transparency = 0.5
+
+    Btn.MouseEnter:Connect(function()
+        TweenService:Create(Btn, TweenInfo.new(0.2), {
+            BackgroundColor3 = Color3.fromRGB(255, 100, 110)
+        }):Play()
+    end)
+
+    Btn.MouseLeave:Connect(function()
+        TweenService:Create(Btn, TweenInfo.new(0.2), {
+            BackgroundColor3 = COLORS.Danger
+        }):Play()
+    end)
 
     Btn.MouseButton1Click:Connect(callback)
 end
@@ -1206,18 +1412,19 @@ end
 -- ==========================================
 -- BOTONES PRINCIPALES
 -- ==========================================
-local yStart = 10
-local step  = 45
+local yStart = 5
+local step  = 52
 
 crearToggle(
-    "Autoplay brainrots",
+    "Autoplay Brainrots",
     yStart + step * 0,
     "AutoPlay",
     startAutoPlayLoop,
     {
         { label = "Velocidad (stud/s)", key = "AutoPlaySpeed" },
         { label = "TP Forward Dist", key = "TPForwardDist" },
-    }
+    },
+    "🧠"
 )
 
 crearToggle(
@@ -1227,7 +1434,8 @@ crearToggle(
     startAutoBatLoop,
     {
         { label = "Rango Auto Bat", key = "AutoBatRange" },
-    }
+    },
+    "⚔"
 )
 
 crearToggle(
@@ -1237,7 +1445,8 @@ crearToggle(
     startHeliLoop,
     {
         { label = "Grados por segundo", key = "HelicopterSpeed" },
-    }
+    },
+    "🚁"
 )
 
 crearToggle(
@@ -1247,7 +1456,8 @@ crearToggle(
     startFlyLoop,
     {
         { label = "Velocidad Fly", key = "FlySpeed" },
-    }
+    },
+    "✈"
 )
 
 crearToggle(
@@ -1255,7 +1465,8 @@ crearToggle(
     yStart + step * 4,
     "InfiniteJump",
     nil,
-    nil
+    nil,
+    "🦘"
 )
 
 crearToggle(
@@ -1265,7 +1476,8 @@ crearToggle(
     startBoostLoop,
     {
         { label = "Multiplicador vel.", key = "SpeedMultiplier" },
-    }
+    },
+    "⚡"
 )
 
 crearToggle(
@@ -1273,7 +1485,8 @@ crearToggle(
     yStart + step * 6,
     "Noclip",
     nil,
-    nil
+    nil,
+    "👻"
 )
 
 crearToggle(
@@ -1281,11 +1494,13 @@ crearToggle(
     yStart + step * 7,
     "ESPVisuals",
     nil,
-    nil
+    nil,
+    "👁"
 )
 
 crearBotonAccion(
     "Unload (Limpiar todo)",
     yStart + step * 8,
-    CleanUnload
+    CleanUnload,
+    "🗑"
 )
