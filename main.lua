@@ -26,6 +26,7 @@ local Config = {
     SpeedMultiplier = 1.5,
     AutoBatRange    = 15,
     AutoSwingSpeed  = 0.3,
+    AutoGrabRange   = 20,
     FlySpeed        = 40,
     TPForwardDist   = 12, -- máximo 10-15 studs por vez
 }
@@ -38,6 +39,8 @@ _G.InfiniteJump   = _G.InfiniteJump   or false
 _G.CFrameBooster  = _G.CFrameBooster  or false
 _G.ESPVisuals     = _G.ESPVisuals     or false
 _G.Noclip         = _G.Noclip         or false
+_G.AutoGrabBrainrots = _G.AutoGrabBrainrots or false
+_G.AutoGrabBrainrots = _G.AutoGrabBrainrots or false
 
 -- Objetos de física que se crean/destruyen
 local flyLinearVelocity
@@ -164,7 +167,7 @@ ScrollFrame.BackgroundTransparency = 1
 ScrollFrame.BorderSizePixel = 0
 ScrollFrame.ScrollBarThickness = 4
 ScrollFrame.ScrollBarImageColor3 = COLORS.Accent
-ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 350)
+ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 420)
 
 local MinBtn = Instance.new("TextButton", HeaderFrame)
 MinBtn.Size = UDim2.new(0, 35, 0, 35)
@@ -687,6 +690,62 @@ local function startAutoBatLoop()
             task.wait(Config.AutoSwingSpeed or 0.3)
         end
         autoBatRunning = false
+    end)
+end
+
+-- ==========================================
+-- AUTO-GRAB BRAINROTS (PROXIMITY PROMPT)
+-- ==========================================
+local autoGrabRunning = false
+
+local function startAutoGrabLoop()
+    if autoGrabRunning then return end
+    autoGrabRunning = true
+
+    task.spawn(function()
+        while _G.AutoGrabBrainrots do
+            local ok, err = pcall(function()
+                local _, hrp = getCharacterAndHRP()
+                local grabRange = Config.AutoGrabRange or 20
+
+                -- Buscar todos los ProximityPrompts en workspace
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    if obj:IsA("ProximityPrompt") then
+                        -- Verificar si el ProximityPrompt está en un objeto brainrots o cerca de uno
+                        local parent = obj.Parent
+                        if parent and parent:IsA("BasePart") then
+                            local distance = (parent.Position - hrp.Position).Magnitude
+                            
+                            -- Si está dentro del rango, activar el prompt automáticamente
+                            if distance <= grabRange then
+                                -- Verificar si es un brainrots (opcional, puedes quitar esta línea si quieres agarrar todo)
+                                if parent.Name == TARGET_NAME or obj.ObjectText:lower():find("brain") or obj.ActionText:lower():find("collect") or obj.ActionText:lower():find("grab") or obj.ActionText:lower():find("pick") then
+                                    fireproximityprompt(obj)
+                                end
+                            end
+                        elseif parent and parent:IsA("Model") then
+                            -- Si el ProximityPrompt está en un Model, buscar su parte principal
+                            local mainPart = parent.PrimaryPart or parent:FindFirstChildWhichIsA("BasePart", true)
+                            if mainPart then
+                                local distance = (mainPart.Position - hrp.Position).Magnitude
+                                
+                                if distance <= grabRange then
+                                    -- Verificar si es relevante
+                                    if parent.Name == TARGET_NAME or obj.ObjectText:lower():find("brain") or obj.ActionText:lower():find("collect") or obj.ActionText:lower():find("grab") or obj.ActionText:lower():find("pick") then
+                                        fireproximityprompt(obj)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+            if not ok then
+                warn("Error en AutoGrab:", err)
+            end
+            task.wait(0.2) -- Chequear cada 0.2 segundos
+        end
+        autoGrabRunning = false
     end)
 end
 
@@ -1235,6 +1294,7 @@ local function CleanUnload()
     _G.CFrameBooster  = false
     _G.ESPVisuals     = false
     _G.Noclip         = false
+    _G.AutoGrabBrainrots = false
 
     if flyLinearVelocity then flyLinearVelocity:Destroy() flyLinearVelocity = nil end
     if flyAttachment then flyAttachment:Destroy() flyAttachment = nil end
@@ -1418,8 +1478,6 @@ end
 local yStart = 5
 local step  = 52
 
-
-
 crearToggle(
     "Auto Bat (Kill Aura)",
     yStart + step * 0,
@@ -1433,8 +1491,19 @@ crearToggle(
 )
 
 crearToggle(
-    "Helicopter Spin",
+    "Auto-Grab Brainrots",
     yStart + step * 1,
+    "AutoGrabBrainrots",
+    startAutoGrabLoop,
+    {
+        { label = "Rango Auto-Grab", key = "AutoGrabRange" },
+    },
+    "🧲"
+)
+
+crearToggle(
+    "Helicopter Spin",
+    yStart + step * 2,
     "HelicopterSpin",
     startHeliLoop,
     {
@@ -1445,7 +1514,7 @@ crearToggle(
 
 crearToggle(
     "Fly Mode",
-    yStart + step * 2,
+    yStart + step * 3,
     "FlyMode",
     startFlyLoop,
     {
@@ -1456,7 +1525,7 @@ crearToggle(
 
 crearToggle(
     "Infinite Jump",
-    yStart + step * 3,
+    yStart + step * 4,
     "InfiniteJump",
     nil,
     nil,
@@ -1465,7 +1534,7 @@ crearToggle(
 
 crearToggle(
     "CFrame Booster",
-    yStart + step * 4,
+    yStart + step * 5,
     "CFrameBooster",
     startBoostLoop,
     {
@@ -1474,13 +1543,9 @@ crearToggle(
     "⚡"
 )
 
-
-
-
-
 crearBotonAccion(
     "Unload (Limpiar todo)",
-    yStart + step * 5,
+    yStart + step * 6,
     CleanUnload,
     "🗑"
 )
