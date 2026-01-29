@@ -734,44 +734,133 @@ local function startBoostLoop()
 end
 
 -- ==========================================
--- NOCLIP AVANZADO (ANTI-RETURN)
+-- NOCLIP ULTRA AGRESIVO (ANTI-RUBBERBAND RADICAL)
 -- ==========================================
 local noclipRunning = false
 local noclipSteppedConn
 local noclipHeartbeatConn
-local noclipHumanoidState = nil
-local noclipAnchoredState = false
+local noclipRenderConn
+local noclipLastPosition = nil
+local noclipCollisionGroup = "NoclipGroup"
+local noclipOriginalGroups = {}
+
+-- Crear CollisionGroup que no colisiona con nada
+local function setupCollisionGroups()
+    local physicsService = game:GetService("PhysicsService")
+    
+    -- Crear grupo de colisión personalizado
+    local success, err = pcall(function()
+        physicsService:RegisterCollisionGroup(noclipCollisionGroup)
+    end)
+    
+    -- Hacer que no colisione con ningún grupo existente
+    for _, groupName in ipairs(physicsService:GetRegisteredCollisionGroups()) do
+        if groupName.Name ~= noclipCollisionGroup then
+            pcall(function()
+                physicsService:SetPartCollisionGroup(workspace, groupName.Name, noclipCollisionGroup, false)
+            end)
+        end
+    end
+end
+
+setupCollisionGroups()
 
 local function startNoclip()
     if noclipRunning then return end
     noclipRunning = true
 
-    -- Guardar estado original del Humanoid
+    -- Guardar grupos de colisión originales
     local ok, err = pcall(function()
-        local _, hrp, humanoid = getCharacterAndHRP()
-        noclipHumanoidState = humanoid:GetState()
+        local character = player.Character
+        if character then
+            for _, part in ipairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    noclipOriginalGroups[part] = part.CollisionGroupId
+                end
+            end
+        end
     end)
 
-    -- CONEXIÓN EN STEPPED (antes de cada frame de física)
+    -- CONEXIÓN EN STEPPED (ANTES de la física del servidor)
     noclipSteppedConn = RunService.Stepped:Connect(function()
-        if not _G.Noclip then
-            -- Restaurar estado cuando se desactiva
-            local ok, err = pcall(function()
-                local character = player.Character
-                if character then
-                    local hrp = character:FindFirstChild("HumanoidRootPart")
-                    local humanoid = character:FindFirstChildOfClass("Humanoid")
-                    
-                    if hrp then
-                        hrp.Anchored = false
-                    end
-                    if humanoid then
-                        humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+        if not _G.Noclip then return end
+
+        local ok, err = pcall(function()
+            local character = player.Character
+            if not character then return end
+
+            local hrp = character:FindFirstChild("HumanoidRootPart")
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            local cam = workspace.CurrentCamera
+
+            if not hrp or not humanoid then return end
+
+            -- 1) COLLISIONGROUP BYPASS
+            local physicsService = game:GetService("PhysicsService")
+            for _, part in ipairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    pcall(function()
+                        physicsService:SetPartCollisionGroup(part, noclipCollisionGroup)
+                    end)
+                end
+            end
+
+            -- 2) CANCOLLIDE = FALSE (Stepped)
+            for _, part in ipairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
+                end
+            end
+
+            -- 3) REMOVE VELOCITY (todas las partes)
+            hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+            hrp.Velocity = Vector3.new(0, 0, 0)
+            hrp.RotVelocity = Vector3.new(0, 0, 0)
+
+            for _, part in ipairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                    part.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                    if part:IsA("BasePart") then
+                        part.Velocity = Vector3.new(0, 0, 0)
+                        part.RotVelocity = Vector3.new(0, 0, 0)
                     end
                 end
-            end)
-            return
+            end
+
+            -- 4) STATE MACHINE MANIPULATION (cambiar constantemente)
+            humanoid:ChangeState(Enum.HumanoidStateType.PhysicsDisabled)
+
+            -- 5) HRP DISPLACEMENT (detectar rubberband y contrarrestar)
+            if noclipLastPosition then
+                local currentPos = hrp.Position
+                local distance = (currentPos - noclipLastPosition).Magnitude
+                
+                -- Si el servidor nos movió más de 1.5 studs, verificar si es rubberband
+                if distance > 1.5 then
+                    local direction = (currentPos - noclipLastPosition)
+                    -- Si nos movimos hacia atrás (dirección negativa respecto a la cámara), contrarrestar
+                    if cam then
+                        local forwardDir = cam.CFrame.LookVector
+                        local dot = direction.Unit:Dot(forwardDir)
+                        if dot < -0.3 then -- Movimiento hacia atrás detectado
+                            -- Forzar posición 0.15 studs hacia adelante usando CFrame
+                            hrp.CFrame = hrp.CFrame * CFrame.new(forwardDir * 0.15)
+                        end
+                    end
+                end
+            end
+            noclipLastPosition = hrp.Position
+        end)
+        if not ok then
+            warn("Error Noclip Stepped:", err)
         end
+    end)
+
+    -- CONEXIÓN EN HEARTBEAT (DESPUÉS de la física del servidor)
+    noclipHeartbeatConn = RunService.Heartbeat:Connect(function()
+        if not _G.Noclip then return end
 
         local ok, err = pcall(function()
             local character = player.Character
@@ -780,91 +869,74 @@ local function startNoclip()
             local hrp = character:FindFirstChild("HumanoidRootPart")
             local humanoid = character:FindFirstChildOfClass("Humanoid")
 
-            -- 1) CANCOLLIDE = FALSE (en Stepped)
+            if not hrp or not humanoid then return end
+
+            -- 1) COLLISIONGROUP BYPASS (Heartbeat)
+            local physicsService = game:GetService("PhysicsService")
             for _, part in ipairs(character:GetDescendants()) do
                 if part:IsA("BasePart") then
-                    if part.CanCollide then
-                        part.CanCollide = false
-                    end
+                    pcall(function()
+                        physicsService:SetPartCollisionGroup(part, noclipCollisionGroup)
+                    end)
                 end
             end
 
-            -- 2) VELOCITY ZEROING (en Stepped)
-            if hrp then
-                hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-                hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+            -- 2) CANCOLLIDE = FALSE (Heartbeat)
+            for _, part in ipairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
+                end
             end
+
+            -- 3) REMOVE VELOCITY (Heartbeat)
+            hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+            hrp.Velocity = Vector3.new(0, 0, 0)
+            hrp.RotVelocity = Vector3.new(0, 0, 0)
 
             for _, part in ipairs(character:GetDescendants()) do
                 if part:IsA("BasePart") then
                     part.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
                     part.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                    if part:IsA("BasePart") then
+                        part.Velocity = Vector3.new(0, 0, 0)
+                        part.RotVelocity = Vector3.new(0, 0, 0)
+                    end
                 end
             end
 
-            -- 3) HUMANOID STATE CHANGE (NoPhysics temporalmente)
-            if humanoid then
-                local currentState = humanoid:GetState()
-                if currentState ~= Enum.HumanoidStateType.PhysicsDisabled then
-                    humanoid:ChangeState(Enum.HumanoidStateType.PhysicsDisabled)
-                end
-            end
-
-            -- 4) ANCHORED TOGGLE (solo HRP, brevemente pero más frecuente)
-            if hrp then
-                -- Alternar entre anclado y no anclado muy rápido para evitar que el servidor lo mueva
-                if not noclipAnchoredState then
-                    noclipAnchoredState = true
-                    hrp.Anchored = true
-                    task.spawn(function()
-                        task.wait(0.005) -- 5ms anclado
-                        if hrp and hrp.Parent and _G.Noclip then
-                            hrp.Anchored = false
-                            task.wait(0.005) -- 5ms desanclado
-                            noclipAnchoredState = false
-                        end
-                    end)
-                end
-            end
+            -- 4) STATE MACHINE MANIPULATION (Heartbeat)
+            humanoid:ChangeState(Enum.HumanoidStateType.Physics)
         end)
         if not ok then
-            warn("Error Noclip Stepped:", err)
+            warn("Error Noclip Heartbeat:", err)
         end
     end)
 
-    -- CONEXIÓN EN HEARTBEAT (doble seguridad)
-    noclipHeartbeatConn = RunService.Heartbeat:Connect(function()
+    -- CONEXIÓN EN RENDERSTEPPED (triple seguridad)
+    noclipRenderConn = RunService.RenderStepped:Connect(function()
         if not _G.Noclip then return end
 
         local ok, err = pcall(function()
             local character = player.Character
             if not character then return end
 
-            -- 1) CANCOLLIDE = FALSE (en Heartbeat también)
-            for _, part in ipairs(character:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    if part.CanCollide then
-                        part.CanCollide = false
-                    end
-                end
-            end
-
-            -- 2) VELOCITY ZEROING (en Heartbeat también)
             local hrp = character:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-                hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-            end
+            if not hrp then return end
 
+            -- CANCOLLIDE = FALSE (RenderStepped)
             for _, part in ipairs(character:GetDescendants()) do
                 if part:IsA("BasePart") then
-                    part.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-                    part.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                    part.CanCollide = false
                 end
             end
+
+            -- REMOVE VELOCITY (RenderStepped)
+            hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
         end)
         if not ok then
-            warn("Error Noclip Heartbeat:", err)
+            warn("Error Noclip RenderStepped:", err)
         end
     end)
 end
@@ -878,6 +950,10 @@ local function stopNoclip()
         noclipHeartbeatConn:Disconnect()
         noclipHeartbeatConn = nil
     end
+    if noclipRenderConn then
+        noclipRenderConn:Disconnect()
+        noclipRenderConn = nil
+    end
 
     -- Restaurar estado normal
     local ok, err = pcall(function()
@@ -885,6 +961,24 @@ local function stopNoclip()
         if character then
             local hrp = character:FindFirstChild("HumanoidRootPart")
             local humanoid = character:FindFirstChildOfClass("Humanoid")
+            local physicsService = game:GetService("PhysicsService")
+
+            -- Restaurar grupos de colisión originales
+            for part, originalGroupId in pairs(noclipOriginalGroups) do
+                if part and part.Parent then
+                    pcall(function()
+                        physicsService:SetPartCollisionGroup(part, "Default")
+                    end)
+                end
+            end
+            noclipOriginalGroups = {}
+
+            -- Restaurar CanCollide
+            for _, part in ipairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = true
+                end
+            end
 
             if hrp then
                 hrp.Anchored = false
@@ -896,7 +990,7 @@ local function stopNoclip()
     end)
 
     noclipRunning = false
-    noclipAnchoredState = false
+    noclipLastPosition = nil
 end
 
 -- ==========================================
