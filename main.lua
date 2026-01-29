@@ -6,8 +6,7 @@
 
 -- Whitelist System: Define allowed UserIDs here
 local AllowedUsers = {
-    [123456789] = true,  -- Replace with actual UserIDs
-    [987654321] = true,  -- Add more as needed
+    [9383569669] = true,  -- Replace with actual UserIDs
 }
 
 local player = game:GetService("Players").LocalPlayer
