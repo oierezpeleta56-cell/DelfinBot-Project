@@ -10,6 +10,7 @@ local TweenService = game:GetService("TweenService")
 local RunService   = game:GetService("RunService")
 local UIS          = game:GetService("UserInputService")
 local VirtualUser  = game:GetService("VirtualUser")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
 if not IDs_Autorizadas[player.UserId] then return end
@@ -22,9 +23,10 @@ local TARGET_NAME = "brainrots"
 local Config = {
     AutoPlaySpeed   = 30,
     HelicopterSpeed = 720,
-    SpeedMultiplier = 1.5, -- moderado para evitar rubberband
+    SpeedMultiplier = 1.5,
     AutoBatRange    = 15,
     FlySpeed        = 40,
+    TPForwardDist   = 12, -- máximo 10-15 studs por vez
 }
 
 _G.AutoPlay       = _G.AutoPlay       or false
@@ -34,6 +36,15 @@ _G.FlyMode        = _G.FlyMode        or false
 _G.InfiniteJump   = _G.InfiniteJump   or false
 _G.CFrameBooster  = _G.CFrameBooster  or false
 _G.ESPVisuals     = _G.ESPVisuals     or false
+_G.Noclip         = _G.Noclip         or false
+
+-- Objetos de física que se crean/destruyen
+local flyLinearVelocity
+local flyAttachment
+local boostLinearVelocity
+local boostAttachment
+local heliAngularVelocity
+local heliAttachment
 
 local function getCharacterAndHRP()
     local character = player.Character or player.CharacterAdded:Wait()
@@ -75,13 +86,11 @@ Title.TextSize = 20
 Title.TextColor3 = Color3.fromRGB(0, 255, 255)
 Title.TextXAlignment = Enum.TextXAlignment.Left
 
--- Frame que contiene los botones (para min/max)
 local ButtonsFrame = Instance.new("Frame", MainFrame)
 ButtonsFrame.Size = UDim2.new(1, 0, 1, -55)
 ButtonsFrame.Position = UDim2.new(0, 0, 0, 50)
 ButtonsFrame.BackgroundTransparency = 1
 
--- Botón de minimizar
 local MinBtn = Instance.new("TextButton", MainFrame)
 MinBtn.Size = UDim2.new(0, 30, 0, 30)
 MinBtn.Position = UDim2.new(1, -40, 0, 10)
@@ -107,7 +116,7 @@ MinBtn.MouseButton1Click:Connect(function()
     ):Play()
 end)
 
--- UI Draggable (MainFrame completo)
+-- UI Draggable
 do
     local dragging = false
     local dragStart, startPos
@@ -277,7 +286,6 @@ local function findPlayerBase()
         return m:FindFirstChildWhichIsA("BasePart", true)
     end
 
-    -- Por nombre del modelo
     for _, obj in ipairs(workspace:GetDescendants()) do
         if obj:IsA("Model") then
             local nameLower = string.lower(obj.Name)
@@ -288,7 +296,6 @@ local function findPlayerBase()
         end
     end
 
-    -- Por Owner / OwnerID
     for _, obj in ipairs(workspace:GetDescendants()) do
         if obj:IsA("Model") then
             local ownerVal = obj:FindFirstChild("Owner") or obj:FindFirstChild("OwnerID")
@@ -314,7 +321,77 @@ local function findPlayerBase()
 end
 
 -- ==========================================
--- AUTOPLAY BRAINROTS (BUCLE SEGURO)
+-- INSTANT STEAL (BUSCAR REMOTEEVENTS)
+-- ==========================================
+local function findStealRemote()
+    -- Buscar RemoteEvents comunes para recolectar items
+    local possibleNames = {
+        "CollectItem", "PickupItem", "GrabItem", "TakeItem",
+        "CollectBrainrots", "PickupBrainrots", "StealItem",
+        "RemoteEvent", "Collect", "Pickup"
+    }
+
+    -- Buscar en ReplicatedStorage primero
+    for _, name in ipairs(possibleNames) do
+        local remote = ReplicatedStorage:FindFirstChild(name)
+        if remote and remote:IsA("RemoteEvent") then
+            return remote
+        end
+    end
+
+    -- Buscar en workspace
+    for _, name in ipairs(possibleNames) do
+        local remote = workspace:FindFirstChild(name, true)
+        if remote and remote:IsA("RemoteEvent") then
+            return remote
+        end
+    end
+
+    return nil
+end
+
+local function instantSteal(part)
+    if not part then return end
+    local remote = findStealRemote()
+    if remote then
+        pcall(function()
+            remote:FireServer(part)
+        end)
+    end
+end
+
+-- ==========================================
+-- TP FORWARD SEGURO (LINEARVELOCITY)
+-- ==========================================
+local function tpForwardSafe(distance)
+    distance = math.clamp(distance, 0, Config.TPForwardDist)
+    local _, hrp = getCharacterAndHRP()
+    local cam = workspace.CurrentCamera
+    if not cam then return end
+
+    local direction = cam.CFrame.LookVector
+    local targetPos = hrp.Position + direction * distance
+
+    -- Usar LinearVelocity para mover físicamente
+    if not flyLinearVelocity then
+        flyAttachment = Instance.new("Attachment", hrp)
+        flyLinearVelocity = Instance.new("LinearVelocity", hrp)
+        flyLinearVelocity.Attachment0 = flyAttachment
+        flyLinearVelocity.MaxForce = math.huge
+        flyLinearVelocity.VectorVelocity = Vector3.new(0, 0, 0)
+    end
+
+    local vel = (targetPos - hrp.Position).Unit * (distance * 10)
+    flyLinearVelocity.VectorVelocity = vel
+
+    task.wait(0.1)
+    if flyLinearVelocity then
+        flyLinearVelocity.VectorVelocity = Vector3.new(0, 0, 0)
+    end
+end
+
+-- ==========================================
+-- AUTOPLAY BRAINROTS (CON INSTANT STEAL Y TP SEGURO)
 -- ==========================================
 local autoPlayRunning = false
 local function startAutoPlayLoop()
@@ -339,36 +416,35 @@ local function startAutoPlayLoop()
                     return
                 end
 
-                local speed = Config.AutoPlaySpeed or 30
-
-                -- Ir al brainrots
+                -- Ir al brainrots usando TP seguro
                 local brainPos = brain.Position + Vector3.new(0, 3, 0)
-                local d1 = (brainPos - hrp.Position).Magnitude
-                local t1 = math.clamp(d1 / speed, 0.1, 10)
-                local tween1 = TweenService:Create(
-                    hrp,
-                    TweenInfo.new(t1, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
-                    { CFrame = CFrame.new(brainPos) }
-                )
-                tween1:Play()
-                tween1.Completed:Wait()
+                local distToBrain = (brainPos - hrp.Position).Magnitude
+
+                while distToBrain > Config.TPForwardDist and _G.AutoPlay do
+                    tpForwardSafe(Config.TPForwardDist)
+                    distToBrain = (brainPos - hrp.Position).Magnitude
+                    task.wait(0.05)
+                end
+
+                -- Cuando estamos cerca, intentar instant steal
+                if distToBrain <= 5 then
+                    instantSteal(brain)
+                end
+
                 if not _G.AutoPlay then return end
 
-                -- Volver a la base
+                -- Volver a la base usando TP seguro
                 local basePos = basePart.Position + Vector3.new(0, 3, 0)
-                local d2 = (basePos - hrp.Position).Magnitude
-                local t2 = math.clamp(d2 / speed, 0.1, 10)
-                local tween2 = TweenService:Create(
-                    hrp,
-                    TweenInfo.new(t2, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
-                    { CFrame = CFrame.new(basePos) }
-                )
-                tween2:Play()
-                tween2.Completed:Wait()
+                local distToBase = (basePos - hrp.Position).Magnitude
+
+                while distToBase > Config.TPForwardDist and _G.AutoPlay do
+                    tpForwardSafe(Config.TPForwardDist)
+                    distToBase = (basePos - hrp.Position).Magnitude
+                    task.wait(0.05)
+                end
             end)
             if not ok then
                 warn("Error en Autoplay:", err)
-                task.wait(1)
             end
             task.wait(0.1)
         end
@@ -437,21 +513,24 @@ local function startAutoBatLoop()
 
                 if nearestEnemy then
                     local thrp = nearestEnemy.HumanoidRootPart
-                    hrp.CFrame = CFrame.new(thrp.Position + thrp.CFrame.LookVector * -2)
+                    -- Usar TP seguro en lugar de CFrame directo
+                    local direction = (thrp.Position - hrp.Position).Unit
+                    local safeDist = math.min((thrp.Position - hrp.Position).Magnitude, Config.TPForwardDist)
+                    tpForwardSafe(safeDist)
                     bat:Activate()
                 end
             end)
             if not ok then
                 warn("Error en AutoBat:", err)
             end
-            task.wait(0.1) -- no saturar servidor
+            task.wait(0.1)
         end
         autoBatRunning = false
     end)
 end
 
 -- ==========================================
--- HELICOPTER SPIN
+-- HELICOPTER SPIN (ANGULARVELOCITY)
 -- ==========================================
 local heliRunning = false
 local function startHeliLoop()
@@ -460,22 +539,42 @@ local function startHeliLoop()
 
     task.spawn(function()
         while _G.HelicopterSpin do
-            local dt = RunService.Heartbeat:Wait()
             local ok, err = pcall(function()
                 local _, hrp = getCharacterAndHRP()
+
+                -- Crear AngularVelocity si no existe
+                if not heliAngularVelocity then
+                    heliAttachment = Instance.new("Attachment", hrp)
+                    heliAngularVelocity = Instance.new("AngularVelocity", hrp)
+                    heliAngularVelocity.Attachment0 = heliAttachment
+                    heliAngularVelocity.MaxTorque = math.huge
+                    heliAngularVelocity.AngularVelocity = Vector3.new(0, 0, 0)
+                end
+
                 local speedRad = math.rad(Config.HelicopterSpeed or 720)
-                hrp.CFrame = hrp.CFrame * CFrame.Angles(0, speedRad * dt, 0)
+                heliAngularVelocity.AngularVelocity = Vector3.new(0, speedRad, 0)
             end)
             if not ok then
                 warn("Error Helicopter:", err)
             end
+            task.wait()
+        end
+
+        -- Limpiar al salir
+        if heliAngularVelocity then
+            heliAngularVelocity:Destroy()
+            heliAngularVelocity = nil
+        end
+        if heliAttachment then
+            heliAttachment:Destroy()
+            heliAttachment = nil
         end
         heliRunning = false
     end)
 end
 
 -- ==========================================
--- FLY MODE (VELOCIDAD SUAVIZADA, MENOS RUBBERBAND)
+-- FLY MODE (LINEARVELOCITY)
 -- ==========================================
 local flyRunning = false
 local lastFlyHumanoid
@@ -488,6 +587,15 @@ local function startFlyLoop()
         local _, hrp, humanoid = getCharacterAndHRP()
         lastFlyHumanoid = humanoid
         humanoid.PlatformStand = true
+
+        -- Crear LinearVelocity para Fly
+        if not flyLinearVelocity then
+            flyAttachment = Instance.new("Attachment", hrp)
+            flyLinearVelocity = Instance.new("LinearVelocity", hrp)
+            flyLinearVelocity.Attachment0 = flyAttachment
+            flyLinearVelocity.MaxForce = math.huge
+            flyLinearVelocity.VectorVelocity = Vector3.new(0, 0, 0)
+        end
 
         while _G.FlyMode do
             local dt = RunService.Heartbeat:Wait()
@@ -515,18 +623,12 @@ local function startFlyLoop()
                     moveDir = moveDir - Vector3.new(0, 1, 0)
                 end
 
-                local currentVel = hrp.AssemblyLinearVelocity
                 if moveDir.Magnitude > 0 then
                     moveDir = moveDir.Unit
                     local speed = Config.FlySpeed or 40
-                    local targetVel = moveDir * speed
-                    -- suavizado para no dar picos de velocidad
-                    local newVel = currentVel:Lerp(targetVel, 0.4)
-                    hrp.AssemblyLinearVelocity = Vector3.new(newVel.X, newVel.Y, newVel.Z)
+                    flyLinearVelocity.VectorVelocity = moveDir * speed
                 else
-                    -- si no se pulsa nada, suavemente reducimos
-                    local newVel = currentVel:Lerp(Vector3.new(0, 0, 0), 0.2)
-                    hrp.AssemblyLinearVelocity = Vector3.new(newVel.X, newVel.Y, newVel.Z)
+                    flyLinearVelocity.VectorVelocity = Vector3.new(0, 0, 0)
                 end
             end)
             if not ok then
@@ -534,6 +636,15 @@ local function startFlyLoop()
             end
         end
 
+        -- Limpiar Fly
+        if flyLinearVelocity then
+            flyLinearVelocity:Destroy()
+            flyLinearVelocity = nil
+        end
+        if flyAttachment then
+            flyAttachment:Destroy()
+            flyAttachment = nil
+        end
         if lastFlyHumanoid and lastFlyHumanoid.Parent then
             lastFlyHumanoid.PlatformStand = false
         end
@@ -565,7 +676,7 @@ local function updateInfiniteJump()
 end
 
 -- ==========================================
--- CFRAME BOOSTER (ANTI-RUBBERBAND)
+-- CFRAME BOOSTER (LINEARVELOCITY)
 -- ==========================================
 local boostRunning = false
 local function startBoostLoop()
@@ -573,27 +684,88 @@ local function startBoostLoop()
     boostRunning = true
 
     task.spawn(function()
+        -- Crear LinearVelocity para Booster
+        if not boostLinearVelocity then
+            boostAttachment = Instance.new("Attachment")
+            boostLinearVelocity = Instance.new("LinearVelocity")
+            boostLinearVelocity.MaxForce = math.huge
+            boostLinearVelocity.VectorVelocity = Vector3.new(0, 0, 0)
+        end
+
         while _G.CFrameBooster do
             local dt = RunService.Heartbeat:Wait()
             local ok, err = pcall(function()
                 local _, hrp, humanoid = getCharacterAndHRP()
+
+                -- Asegurar que el Attachment esté en HRP
+                if boostAttachment.Parent ~= hrp then
+                    boostAttachment.Parent = hrp
+                    boostLinearVelocity.Parent = hrp
+                    boostLinearVelocity.Attachment0 = boostAttachment
+                end
+
                 local moveDir = humanoid.MoveDirection
                 if moveDir.Magnitude > 0 then
                     local mult = Config.SpeedMultiplier or 1.5
-                    mult = math.clamp(mult, 1, 2) -- clamp para evitar flags
-                    local vel = hrp.AssemblyLinearVelocity
-                    local horiz = Vector3.new(vel.X, 0, vel.Z)
-                    local boosted = horiz * mult
-                    -- mezclamos, no teletransportamos
-                    local final = horiz:Lerp(boosted, 0.3)
-                    hrp.AssemblyLinearVelocity = Vector3.new(final.X, vel.Y, final.Z)
+                    mult = math.clamp(mult, 1, 2)
+                    local baseSpeed = humanoid.WalkSpeed
+                    local boostVel = moveDir.Unit * baseSpeed * mult
+                    boostLinearVelocity.VectorVelocity = boostVel
+                else
+                    boostLinearVelocity.VectorVelocity = Vector3.new(0, 0, 0)
                 end
             end)
             if not ok then
                 warn("Error Booster:", err)
             end
         end
+
+        -- Limpiar Booster
+        if boostLinearVelocity then
+            boostLinearVelocity:Destroy()
+            boostLinearVelocity = nil
+        end
+        if boostAttachment then
+            boostAttachment:Destroy()
+            boostAttachment = nil
+        end
         boostRunning = false
+    end)
+end
+
+-- ==========================================
+-- NOCLIP DE SEGURIDAD (RUNSERVICE.STEPPED)
+-- ==========================================
+local noclipRunning = false
+local noclipConn
+
+local function startNoclip()
+    if noclipRunning then return end
+    noclipRunning = true
+
+    noclipConn = RunService.Stepped:Connect(function()
+        if not _G.Noclip then
+            if noclipConn then
+                noclipConn:Disconnect()
+                noclipConn = nil
+            end
+            noclipRunning = false
+            return
+        end
+
+        local ok, err = pcall(function()
+            local character = player.Character
+            if character then
+                for _, part in ipairs(character:GetDescendants()) do
+                    if part:IsA("BasePart") and part.CanCollide then
+                        part.CanCollide = false
+                    end
+                end
+            end
+        end)
+        if not ok then
+            warn("Error Noclip:", err)
+        end
     end)
 end
 
@@ -698,7 +870,7 @@ uiToggleConn = UIS.InputBegan:Connect(function(input, gpe)
 end)
 
 -- ==========================================
--- CLEAN UNLOAD
+-- CLEAN UNLOAD (DESTRUIR TODOS LOS OBJETOS)
 -- ==========================================
 local function CleanUnload()
     _G.AutoPlay       = false
@@ -708,10 +880,20 @@ local function CleanUnload()
     _G.InfiniteJump   = false
     _G.CFrameBooster  = false
     _G.ESPVisuals     = false
+    _G.Noclip         = false
+
+    -- Limpiar todos los objetos de física
+    if flyLinearVelocity then flyLinearVelocity:Destroy() flyLinearVelocity = nil end
+    if flyAttachment then flyAttachment:Destroy() flyAttachment = nil end
+    if boostLinearVelocity then boostLinearVelocity:Destroy() boostLinearVelocity = nil end
+    if boostAttachment then boostAttachment:Destroy() boostAttachment = nil end
+    if heliAngularVelocity then heliAngularVelocity:Destroy() heliAngularVelocity = nil end
+    if heliAttachment then heliAttachment:Destroy() heliAttachment = nil end
 
     updateInfiniteJump()
     clearESP()
 
+    if noclipConn then noclipConn:Disconnect() noclipConn = nil end
     if antiAfkConn then antiAfkConn:Disconnect() antiAfkConn = nil end
     if uiToggleConn then uiToggleConn:Disconnect() uiToggleConn = nil end
 
@@ -755,6 +937,10 @@ local function crearToggle(nombre, posicionY, toggleKey, loopStarter, camposConf
             updateInfiniteJump()
         elseif toggleKey == "ESPVisuals" then
             updateESPState()
+        elseif toggleKey == "Noclip" then
+            if _G.Noclip then
+                startNoclip()
+            end
         end
     end)
 
@@ -804,6 +990,7 @@ crearToggle(
     startAutoPlayLoop,
     {
         { label = "Velocidad (stud/s)", key = "AutoPlaySpeed" },
+        { label = "TP Forward Dist", key = "TPForwardDist" },
     }
 )
 
@@ -856,8 +1043,16 @@ crearToggle(
 )
 
 crearToggle(
-    "ESP Visuals",
+    "Noclip",
     yStart + step * 6,
+    "Noclip",
+    nil,
+    nil
+)
+
+crearToggle(
+    "ESP Visuals",
+    yStart + step * 7,
     "ESPVisuals",
     nil,
     nil
@@ -865,6 +1060,7 @@ crearToggle(
 
 crearBotonAccion(
     "Unload (Limpiar todo)",
-    yStart + step * 7,
+    yStart + step * 8,
     CleanUnload
 )
+
