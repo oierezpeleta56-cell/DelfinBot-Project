@@ -1,243 +1,161 @@
-<think>
-Primero, el usuario quiere que elimine cualquier sistema de keys o contraseñas. En el script original, hay un sistema de clave con _G.Key = "exploiter". Necesito quitar eso.
-
-
-## Removing Key System  
-- The user requests removing any key or password systems from the original script.  
-- Found a key system with _G.Key = "exploiter" that needs to be eliminated.
-</think>```lua
 -- ==========================================
--- DELFINBOT V3.5 - STEALTH EDITION (MODIFICADO)
--- Anti-Detection + Optimized
+-- DELFINBOT V3.5 - PROFESSIONAL EDITION
+-- Strict Whitelist System
 -- ==========================================
 
--- Tabla de IDs autorizadas (fácil de editar: añade más IDs aquí)
-local IDs_Autorizadas = {
-    [9383569669] = true,
-    -- Ejemplo: añade más así: [123456789] = true,
+-- ==========================================
+-- WHITELIST SYSTEM
+-- ==========================================
+local IDS_AUTORIZADAS = {
+    [9383569669] = true,  -- Cliente principal
+    -- Añade más IDs aquí: [ID] = true,
 }
 
--- Verificación de ID
-local plr = game:GetService("Players").LocalPlayer
-if not IDs_Autorizadas[plr.UserId] then
+-- Verificación de autorización
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+if not IDS_AUTORIZADAS[LocalPlayer.UserId] then
     print('ID no autorizada')
     return
 end
 
 -- Notificación de acceso autorizado
 game:GetService("StarterGui"):SetCore("SendNotification", {
-    Title = "✅ Acceso Autorizado",
-    Text = "DelfinBot v3.5: Cargando funciones...",
+    Title = "🐬 DelfinBot v3.5",
+    Text = "Acceso Autorizado",
     Duration = 3
 })
 
 -- ==========================================
--- ANTI-DETECTION SETUP
+-- SERVICIOS Y VARIABLES
 -- ==========================================
--- Ocultar del script scanner de Roblox
-local function protect(instance)
-    if gethiddenproperty then
-        pcall(function()
-            gethiddenproperty(instance, "Name")
-        end)
-    end
-    if sethiddenproperty then
-        pcall(function()
-            sethiddenproperty(instance, "Name", tostring(math.random(100000, 999999)))
-        end)
-    end
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local VirtualUser = game:GetService("VirtualUser")
+
+-- Configuración
+local Config = {
+    BatRange = 15,
+    SwingSpeed = 0.4,
+    HeliSpeed = 600,
+    FlySpeed = 35,
+    SpeedMult = 1.3,
+}
+
+-- Estado de funciones
+local FuncionesActivas = {
+    DoubleJump = false,
+    AntiRagdoll = false,
+    TornadoSpin = false,
+    FlyMode = false,
+    SpeedBoost = false,
+}
+
+-- Variables de control
+local Connections = {}
+local FlyVelocity, FlyAttachment
+local BoostVelocity, BoostAttachment
+local HeliVelocity, HeliAttachment
+local CanDoubleJump = false
+local HasDoubleJumped = false
+local JumpCount = 0
+local LastJumpReset = tick()
+
+-- ==========================================
+-- FUNCIONES AUXILIARES
+-- ==========================================
+local function getCharacter()
+    local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local humanoidRootPart = character:WaitForChild("HumanoidRootPart", 5)
+    local humanoid = character:WaitForChild("Humanoid", 5)
+    return character, humanoidRootPart, humanoid
 end
 
--- Randomizar nombres para evitar detección de patrones
-local function randomString(length)
-    local chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-    local result = ""
-    for i = 1, length do
-        local rand = math.random(1, #chars)
-        result = result .. chars:sub(rand, rand)
-    end
-    return result
-end
-
--- ==========================================
--- SERVICIOS Y VARIABLES (OFUSCADOS)
--- ==========================================
-local P = game:GetService("Players")
-local T = game:GetService("TweenService")
-local R = game:GetService("RunService")
-local U = game:GetService("UserInputService")
-local V = game:GetService("VirtualUser")
-
-local CFG = {
-    HeliSpeed = 600, -- Menos agresivo
-}
-
-local TGL = {
-    Jump = false,
-    Ragdoll = false,
-    Heli = false,
-}
-
-local THEME = "Cyan"
-local THEMES = {
-    Cyan = {
-        BG = Color3.fromRGB(18, 18, 24),
-        BG2 = Color3.fromRGB(25, 25, 35),
-        AC = Color3.fromRGB(138, 43, 226),
-        AC2 = Color3.fromRGB(0, 191, 255),
-        TXT = Color3.fromRGB(240, 240, 245),
-        DIM = Color3.fromRGB(160, 160, 170),
-        OFF = Color3.fromRGB(35, 35, 45),
-        ON = Color3.fromRGB(138, 43, 226),
-        BRD = Color3.fromRGB(138, 43, 226),
-    },
-    Red = {
-        BG = Color3.fromRGB(18, 18, 24),
-        BG2 = Color3.fromRGB(35, 25, 25),
-        AC = Color3.fromRGB(220, 38, 38),
-        AC2 = Color3.fromRGB(255, 82, 82),
-        TXT = Color3.fromRGB(240, 240, 245),
-        DIM = Color3.fromRGB(160, 160, 170),
-        OFF = Color3.fromRGB(35, 35, 45),
-        ON = Color3.fromRGB(220, 38, 38),
-        BRD = Color3.fromRGB(220, 38, 38),
-    }
-}
-local C = THEMES[THEME]
-
-local heli, heliA
-local conns = {}
-local canDoubleJump = false
-local hasDoubleJumped = false
-
--- Variables para comportamiento humano
-local humanDelays = {
-    jump = 0,
-}
-
--- ==========================================
--- NOTIFICACIONES (STEALTH)
--- ==========================================
-local NotifFrame
-local function notify(msg, dur)
-    if not NotifFrame then
-        NotifFrame = Instance.new("Frame")
-        NotifFrame.Name = randomString(10) -- Nombre random
-        NotifFrame.Size = UDim2.new(0, 300, 0, 0)
-        NotifFrame.Position = UDim2.new(1, -320, 0, 20)
-        NotifFrame.BackgroundTransparency = 1
-        NotifFrame.Parent = plr:WaitForChild("PlayerGui"):WaitForChild(randomString(8))
-        protect(NotifFrame)
-        local l = Instance.new("UIListLayout", NotifFrame)
-        l.Padding = UDim.new(0, 10)
+local function getBat()
+    local character = LocalPlayer.Character
+    if character then
+        for _, tool in ipairs(character:GetChildren()) do
+            if tool:IsA("Tool") and tool.Name:lower():find("bat") then
+                return tool
+            end
+        end
     end
     
-    local n = Instance.new("Frame", NotifFrame)
-    n.Name = randomString(8)
-    n.Size = UDim2.new(1, 0, 0, 0)
-    n.BackgroundColor3 = C.BG2
-    n.BorderSizePixel = 0
-    protect(n)
-    Instance.new("UICorner", n).CornerRadius = UDim.new(0, 8)
-    local s = Instance.new("UIStroke", n)
-    s.Color = C.AC2
-    s.Thickness = 2
-    s.Transparency = 0.3
-    
-    local t = Instance.new("TextLabel", n)
-    t.Size = UDim2.new(1, -20, 1, 0)
-    t.Position = UDim2.new(0, 10, 0, 0)
-    t.BackgroundTransparency = 1
-    t.Font = Enum.Font.Gotham
-    t.TextSize = 13
-    t.TextColor3 = C.TXT
-    t.Text = msg
-    t.TextXAlignment = Enum.TextXAlignment.Left
-    t.TextWrapped = true
-    
-    T:Create(n, TweenInfo.new(0.3, Enum.EasingStyle.Back), {Size = UDim2.new(1, 0, 0, 50)}):Play()
-    task.delay(dur or 3, function()
-        T:Create(n, TweenInfo.new(0.3), {Size = UDim2.new(1, 0, 0, 0)}):Play()
-        task.wait(0.3)
-        n:Destroy()
-    end)
+    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
+    if backpack then
+        for _, tool in ipairs(backpack:GetChildren()) do
+            if tool:IsA("Tool") and tool.Name:lower():find("bat") then
+                return tool
+            end
+        end
+    end
+    return nil
+end
+
+local function notify(message, duration)
+    duration = duration or 3
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "🐬 DelfinBot v3.5",
+        Text = message,
+        Duration = duration
+    })
 end
 
 -- ==========================================
--- HELPERS (CON RETRASOS HUMANOS)
+-- DOUBLE JUMP
 -- ==========================================
-local function getCHH()
-    local c = plr.Character or plr.CharacterAdded:Wait()
-    local h = c:WaitForChild("HumanoidRootPart", 5)
-    local hum = c:WaitForChild("Humanoid", 5)
-    return c, h, hum
-end
-
--- Retraso humano random
-local function humanDelay(min, max)
-    task.wait(math.random(min * 100, max * 100) / 100)
-end
-
--- ==========================================
--- DOUBLE JUMP (STEALTH + LIMITADO)
--- ==========================================
-local jumpCount = 0
-local lastJumpReset = tick()
-
 local function setupDoubleJump()
-    if conns.jump then conns.jump:Disconnect() end
-    if conns.landed then conns.landed:Disconnect() end
+    if Connections.DoubleJump then Connections.DoubleJump:Disconnect() end
+    if Connections.Landed then Connections.Landed:Disconnect() end
     
-    if not TGL.Jump then return end
+    if not FuncionesActivas.DoubleJump then return end
     
-    local c, h, hum = getCHH()
+    local character, _, humanoid = getCharacter()
     
-    -- Reset cada 3 segundos (comportamiento más humano)
+    -- Reset jump count every 3 seconds
     task.spawn(function()
-        while TGL.Jump do
+        while FuncionesActivas.DoubleJump do
             task.wait(3)
-            if tick() - lastJumpReset > 3 then
-                jumpCount = 0
-                lastJumpReset = tick()
+            if tick() - LastJumpReset > 3 then
+                JumpCount = 0
+                LastJumpReset = tick()
             end
         end
     end)
     
-    conns.landed = hum.StateChanged:Connect(function(old, new)
-        if not TGL.Jump then return end
-        if new == Enum.HumanoidStateType.Landed then
-            canDoubleJump = true
-            hasDoubleJumped = false
-        elseif new == Enum.HumanoidStateType.Freefall or new == Enum.HumanoidStateType.Jumping then
-            canDoubleJump = true
+    Connections.Landed = humanoid.StateChanged:Connect(function(oldState, newState)
+        if not FuncionesActivas.DoubleJump then return end
+        if newState == Enum.HumanoidStateType.Landed then
+            CanDoubleJump = true
+            HasDoubleJumped = false
+        elseif newState == Enum.HumanoidStateType.Freefall or newState == Enum.HumanoidStateType.Jumping then
+            CanDoubleJump = true
         end
     end)
     
-    conns.jump = U.JumpRequest:Connect(function()
-        if not TGL.Jump then return end
+    Connections.DoubleJump = UserInputService.JumpRequest:Connect(function()
+        if not FuncionesActivas.DoubleJump then return end
         
-        -- Limitar a 2 saltos por cada 3 segundos (anti-spam detection)
         local now = tick()
-        if now - humanDelays.jump < 0.2 then return end
-        humanDelays.jump = now
-        
-        if jumpCount >= 2 and now - lastJumpReset < 3 then
-            return -- No permitir más de 2 saltos en 3 segundos
+        if JumpCount >= 2 and now - LastJumpReset < 3 then
+            return
         end
         
         pcall(function()
-            local char, hrp, humanoid = getCHH()
-            if not char or not hrp or not humanoid then return end
+            local char, hrp, hum = getCharacter()
+            if not char or not hrp or not hum then return end
             
-            local state = humanoid:GetState()
+            local state = hum:GetState()
             if (state == Enum.HumanoidStateType.Freefall or state == Enum.HumanoidStateType.Jumping) and 
-               canDoubleJump and not hasDoubleJumped then
+               CanDoubleJump and not HasDoubleJumped then
                 
-                jumpCount = jumpCount + 1
+                JumpCount = JumpCount + 1
                 
-                -- Fuerza variable para parecer más humano (55-65%)
+                -- Variable jump power for more natural movement
                 local variation = math.random(55, 65) / 100
-                local jumpPower = (humanoid.JumpPower or 50) * variation
+                local jumpPower = (hum.JumpPower or 50) * variation
                 
                 hrp.AssemblyLinearVelocity = Vector3.new(
                     hrp.AssemblyLinearVelocity.X,
@@ -245,41 +163,40 @@ local function setupDoubleJump()
                     hrp.AssemblyLinearVelocity.Z
                 )
                 
-                hasDoubleJumped = true
-                canDoubleJump = false
+                HasDoubleJumped = true
+                CanDoubleJump = false
             end
         end)
     end)
 end
 
 -- ==========================================
--- ANTI-RAGDOLL (STEALTH)
+-- ANTI-RAGDOLL
 -- ==========================================
 local function setupAntiRagdoll()
-    if conns.ragdoll then conns.ragdoll:Disconnect() end
-    if not TGL.Ragdoll then return end
+    if Connections.AntiRagdoll then Connections.AntiRagdoll:Disconnect() end
+    if not FuncionesActivas.AntiRagdoll then return end
     
-    local c, h, hum = getCHH()
-    if not c or not hum then return end
+    local character, _, humanoid = getCharacter()
+    if not character or not humanoid then return end
     
-    -- Usar task.defer para evitar detección de bucles sospechosos
-    conns.ragdoll = hum.StateChanged:Connect(function(old, new)
-        if not TGL.Ragdoll then return end
-        if new == Enum.HumanoidStateType.Ragdoll or new == Enum.HumanoidStateType.FallingDown then
+    Connections.AntiRagdoll = humanoid.StateChanged:Connect(function(oldState, newState)
+        if not FuncionesActivas.AntiRagdoll then return end
+        if newState == Enum.HumanoidStateType.Ragdoll or newState == Enum.HumanoidStateType.FallingDown then
             task.defer(function()
-                humanDelay(0.05, 0.15) -- Retraso humano
-                if hum and hum.Parent then
-                    hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+                task.wait(math.random(50, 150) / 1000)
+                if humanoid and humanoid.Parent then
+                    humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
                 end
             end)
         end
     end)
     
-    -- Mantener joints activos de forma menos agresiva
+    -- Keep joints active
     task.spawn(function()
-        while TGL.Ragdoll do
+        while FuncionesActivas.AntiRagdoll do
             pcall(function()
-                for _, v in pairs(c:GetDescendants()) do
+                for _, v in pairs(character:GetDescendants()) do
                     if v:IsA("Motor6D") and not v.Enabled then
                         task.defer(function()
                             v.Enabled = true
@@ -287,192 +204,419 @@ local function setupAntiRagdoll()
                     end
                 end
             end)
-            humanDelay(0.2, 0.4) -- Más lento para evitar detección
+            task.wait(math.random(200, 400) / 1000)
         end
     end)
 end
 
 -- ==========================================
--- TORNADO SPIN (RENOMBRADO DE HELICOPTER)
+-- TORNADO SPIN (HELICOPTER)
 -- ==========================================
-local heliRun = false
-local function startHeli()
-    if heliRun then return end
-    heliRun = true
+local function setupTornadoSpin()
+    if not FuncionesActivas.TornadoSpin then
+        if HeliVelocity then HeliVelocity:Destroy() end
+        if HeliAttachment then HeliAttachment:Destroy() end
+        HeliVelocity = nil
+        HeliAttachment = nil
+        return
+    end
     
     task.spawn(function()
-        while TGL.Heli do
+        while FuncionesActivas.TornadoSpin do
             pcall(function()
-                local _, h = getCHH()
-                if not heli then
-                    heliA = Instance.new("Attachment", h)
-                    heliA.Name = randomString(10)
-                    protect(heliA)
-                    heli = Instance.new("AngularVelocity", h)
-                    heli.Name = randomString(10)
-                    protect(heli)
-                    heli.Attachment0 = heliA
-                    heli.MaxTorque = math.huge
+                local _, humanoidRootPart = getCharacter()
+                if not HeliVelocity then
+                    HeliAttachment = Instance.new("Attachment", humanoidRootPart)
+                    HeliVelocity = Instance.new("AngularVelocity", humanoidRootPart)
+                    HeliVelocity.Attachment0 = HeliAttachment
+                    HeliVelocity.MaxTorque = math.huge
                 end
-                -- Velocidad ligeramente variable
-                local speedVar = CFG.HeliSpeed + math.random(-50, 50)
-                heli.AngularVelocity = Vector3.new(0, math.rad(speedVar), 0)
+                
+                local speedVariation = Config.HeliSpeed + math.random(-50, 50)
+                HeliVelocity.AngularVelocity = Vector3.new(0, math.rad(speedVariation), 0)
             end)
             task.wait()
         end
-        if heli then heli:Destroy() heli = nil end
-        if heliA then heliA:Destroy() heliA = nil end
-        heliRun = false
+        
+        if HeliVelocity then HeliVelocity:Destroy() end
+        if HeliAttachment then HeliAttachment:Destroy() end
+        HeliVelocity = nil
+        HeliAttachment = nil
     end)
 end
 
 -- ==========================================
--- CHARACTER ADDED
+-- FLY MODE
 -- ==========================================
-conns.char = plr.CharacterAdded:Connect(function(c)
-    task.wait(1)
-    canDoubleJump = false
-    hasDoubleJumped = false
-    jumpCount = 0
-    lastJumpReset = tick()
+local function setupFlyMode()
+    if not FuncionesActivas.FlyMode then
+        if FlyVelocity then FlyVelocity:Destroy() end
+        if FlyAttachment then FlyAttachment:Destroy() end
+        FlyVelocity = nil
+        FlyAttachment = nil
+        
+        local _, _, humanoid = getCharacter()
+        if humanoid then
+            task.defer(function()
+                task.wait(0.1)
+                if humanoid.Parent then humanoid.PlatformStand = false end
+            end)
+        end
+        return
+    end
     
-    if TGL.Jump then setupDoubleJump() end
-    if TGL.Ragdoll then setupAntiRagdoll() end
+    task.spawn(function()
+        local _, humanoidRootPart, humanoid = getCharacter()
+        
+        task.defer(function()
+            task.wait(0.1)
+            if humanoid then humanoid.PlatformStand = true end
+        end)
+        
+        if not FlyVelocity then
+            FlyAttachment = Instance.new("Attachment", humanoidRootPart)
+            FlyVelocity = Instance.new("LinearVelocity", humanoidRootPart)
+            FlyVelocity.Attachment0 = FlyAttachment
+            FlyVelocity.MaxForce = math.huge
+        end
+        
+        while FuncionesActivas.FlyMode do
+            pcall(function()
+                local camera = workspace.CurrentCamera
+                if not camera then return end
+                
+                local moveVector = Vector3.new()
+                if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+                    moveVector = moveVector + camera.CFrame.LookVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+                    moveVector = moveVector - camera.CFrame.LookVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+                    moveVector = moveVector - camera.CFrame.RightVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+                    moveVector = moveVector + camera.CFrame.RightVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                    moveVector = moveVector + Vector3.new(0, 1, 0)
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+                    moveVector = moveVector - Vector3.new(0, 1, 0)
+                end
+                
+                local speed = Config.FlySpeed + math.random(-2, 2)
+                FlyVelocity.VectorVelocity = moveVector.Magnitude > 0 and moveVector.Unit * speed or Vector3.zero
+            end)
+            RunService.Heartbeat:Wait()
+        end
+        
+        if FlyVelocity then FlyVelocity:Destroy() end
+        if FlyAttachment then FlyAttachment:Destroy() end
+        FlyVelocity = nil
+        FlyAttachment = nil
+        
+        if humanoid then
+            task.defer(function()
+                task.wait(0.1)
+                if humanoid.Parent then humanoid.PlatformStand = false end
+            end)
+        end
+    end)
+end
+
+-- ==========================================
+-- SPEED BOOST
+-- ==========================================
+local function setupSpeedBoost()
+    if not FuncionesActivas.SpeedBoost then
+        if BoostVelocity then BoostVelocity:Destroy() end
+        if BoostAttachment then BoostAttachment:Destroy() end
+        BoostVelocity = nil
+        BoostAttachment = nil
+        return
+    end
+    
+    task.spawn(function()
+        if not BoostVelocity then
+            BoostAttachment = Instance.new("Attachment")
+            BoostVelocity = Instance.new("LinearVelocity")
+            BoostVelocity.MaxForce = math.huge
+        end
+        
+        while FuncionesActivas.SpeedBoost do
+            pcall(function()
+                local _, humanoidRootPart, humanoid = getCharacter()
+                if BoostAttachment.Parent ~= humanoidRootPart then
+                    BoostAttachment.Parent = humanoidRootPart
+                    BoostVelocity.Parent = humanoidRootPart
+                    BoostVelocity.Attachment0 = BoostAttachment
+                end
+                
+                local moveDirection = humanoid.MoveDirection
+                local multiplier = Config.SpeedMult + (math.random(-10, 10) / 100)
+                BoostVelocity.VectorVelocity = moveDirection.Magnitude > 0 and moveDirection.Unit * humanoid.WalkSpeed * multiplier or Vector3.zero
+            end)
+            RunService.Heartbeat:Wait()
+        end
+        
+        if BoostVelocity then BoostVelocity:Destroy() end
+        if BoostAttachment then BoostAttachment:Destroy() end
+        BoostVelocity = nil
+        BoostAttachment = nil
+    end)
+end
+
+-- ==========================================
+-- AUTO BAT
+-- ==========================================
+local function setupAutoBat()
+    -- Esta función puede ser implementada si se necesita
+    -- Por ahora, mantenemos el sistema simple
+end
+
+-- ==========================================
+-- CHARACTER ADDED HANDLER
+-- ==========================================
+Connections.CharacterAdded = LocalPlayer.CharacterAdded:Connect(function(character)
+    task.wait(1)
+    CanDoubleJump = false
+    HasDoubleJumped = false
+    JumpCount = 0
+    LastJumpReset = tick()
+    
+    if FuncionesActivas.DoubleJump then setupDoubleJump() end
+    if FuncionesActivas.AntiRagdoll then setupAntiRagdoll() end
 end)
 
 -- ==========================================
--- ANTI-AFK (STEALTH)
+-- ANTI-AFK
 -- ==========================================
-plr.Idled:Connect(function()
+LocalPlayer.Idled:Connect(function()
     task.defer(function()
-        humanDelay(0.5, 1.5)
-        V:Button2Down(Vector2.zero, workspace.CurrentCamera.CFrame)
+        task.wait(math.random(500, 1500) / 1000)
+        VirtualUser:Button2Down(Vector2.zero, workspace.CurrentCamera.CFrame)
         task.wait(0.1)
-        V:Button2Up(Vector2.zero, workspace.CurrentCamera.CFrame)
+        VirtualUser:Button2Up(Vector2.zero, workspace.CurrentCamera.CFrame)
     end)
 end)
 
 -- ==========================================
--- UI (CON NOMBRES RANDOM)
+-- UI SYSTEM
 -- ==========================================
-local G = Instance.new("ScreenGui")
-G.Name = randomString(12)
-G.ResetOnSpawn = false
-G.Parent = plr:WaitForChild("PlayerGui")
-protect(G)
-
-local M = Instance.new("Frame", G)
-M.Name = randomString(8)
-M.Size = UDim2.new(0, 380, 0, 300) -- Ajustado para menos funciones
-M.Position = UDim2.new(0.5, -190, 0.5, -150)
-M.BackgroundColor3 = C.BG
-M.BorderSizePixel = 0
-protect(M)
-Instance.new("UICorner", M).CornerRadius = UDim.new(0, 12)
-local MS = Instance.new("UIStroke", M)
-MS.Color = C.BRD
-MS.Thickness = 2
-MS.Transparency = 0.3
-
-local H = Instance.new("Frame", M)
-H.Name = randomString(8)
-H.Size = UDim2.new(1, 0, 0, 55)
-H.BackgroundColor3 = C.BG2
-H.BorderSizePixel = 0
-protect(H)
-Instance.new("UICorner", H).CornerRadius = UDim.new(0, 12)
-local HG = Instance.new("UIGradient", H)
-HG.Color = ColorSequence.new{ColorSequenceKeypoint.new(0, C.AC), ColorSequenceKeypoint.new(1, C.AC2)}
-HG.Rotation = 45
-HG.Transparency = NumberSequence.new{NumberSequenceKeypoint.new(0, 0.85), NumberSequenceKeypoint.new(1, 0.95)}
-
-local TIT = Instance.new("TextLabel", H)
-TIT.Size = UDim2.new(1, -70, 0, 55)
-TIT.Position = UDim2.new(0, 20, 0, 0)
-TIT.BackgroundTransparency = 1
-TIT.Font = Enum.Font.GothamBold
-TIT.Text = "🐬 DELFIN BOT V3.5"
-TIT.TextSize = 22
-TIT.TextColor3 = C.TXT
-TIT.TextXAlignment = Enum.TextXAlignment.Left
-
-local SUB = Instance.new("TextLabel", H)
-SUB.Size = UDim2.new(1, -70, 0, 20)
-SUB.Position = UDim2.new(0, 20, 0, 32)
-SUB.BackgroundTransparency = 1
-SUB.Font = Enum.Font.Gotham
-SUB.Text = "Stealth Edition"
-SUB.TextSize = 11
-SUB.TextColor3 = C.DIM
-SUB.TextXAlignment = Enum.TextXAlignment.Left
-
-local MIN = Instance.new("TextButton", H)
-MIN.Name = randomString(8)
-MIN.Size = UDim2.new(0, 35, 0, 35)
-MIN.Position = UDim2.new(1, -45, 0, 10)
-MIN.BackgroundColor3 = C.OFF
-MIN.TextColor3 = C.TXT
-MIN.Text = "━"
-MIN.Font = Enum.Font.GothamBold
-MIN.TextSize = 16
-protect(MIN)
-Instance.new("UICorner", MIN).CornerRadius = UDim.new(0, 8)
-
-local mini = false
-MIN.MouseButton1Click:Connect(function()
-    mini = not mini
-    MIN.Text = mini and "+" or "━"
-    T:Create(M, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {Size = mini and UDim2.new(0, 380, 0, 65) or UDim2.new(0, 380, 0, 300)}):Play()
-end)
-
-local BF = Instance.new("Frame", M)
-BF.Name = randomString(8)
-BF.Size = UDim2.new(1, -20, 1, -70)
-BF.Position = UDim2.new(0, 10, 0, 60)
-BF.BackgroundTransparency = 1
-protect(BF)
-
-local SF = Instance.new("ScrollingFrame", BF)
-SF.Name = randomString(8)
-SF.Size = UDim2.new(1, 0, 1, 0)
-SF.BackgroundTransparency = 1
-SF.BorderSizePixel = 0
-SF.ScrollBarThickness = 4
-SF.ScrollBarImageColor3 = C.AC
-SF.CanvasSize = UDim2.new(0, 0, 0, 200) -- Ajustado
-protect(SF)
-
--- Draggable
-local drag, dStart, sPos
-M.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 then
-        drag = true
-        dStart = i.Position
-        sPos = M.Position
+local function createUI()
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "DelfinBotUI"
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    
+    local MainFrame = Instance.new("Frame", ScreenGui)
+    MainFrame.Name = "MainFrame"
+    MainFrame.Size = UDim2.new(0, 350, 0, 400)
+    MainFrame.Position = UDim2.new(0.5, -175, 0.5, -200)
+    MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+    MainFrame.BorderSizePixel = 0
+    Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 12)
+    
+    local UIStroke = Instance.new("UIStroke", MainFrame)
+    UIStroke.Color = Color3.fromRGB(0, 191, 255)
+    UIStroke.Thickness = 2
+    UIStroke.Transparency = 0.3
+    
+    -- Header
+    local Header = Instance.new("Frame", MainFrame)
+    Header.Name = "Header"
+    Header.Size = UDim2.new(1, 0, 0, 50)
+    Header.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+    Header.BorderSizePixel = 0
+    Instance.new("UICorner", Header).CornerRadius = UDim.new(0, 12)
+    
+    local Title = Instance.new("TextLabel", Header)
+    Title.Size = UDim2.new(1, -60, 1, 0)
+    Title.Position = UDim2.new(0, 15, 0, 0)
+    Title.BackgroundTransparency = 1
+    Title.Font = Enum.Font.GothamBold
+    Title.Text = "🐬 DelfinBot v3.5"
+    Title.TextSize = 18
+    Title.TextColor3 = Color3.fromRGB(240, 240, 245)
+    Title.TextXAlignment = Enum.TextXAlignment.Left
+    
+    -- Minimize button
+    local MinimizeButton = Instance.new("TextButton", Header)
+    MinimizeButton.Name = "MinimizeButton"
+    MinimizeButton.Size = UDim2.new(0, 30, 0, 30)
+    MinimizeButton.Position = UDim2.new(1, -35, 0, 10)
+    MinimizeButton.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+    MinimizeButton.Text = "━"
+    MinimizeButton.TextColor3 = Color3.fromRGB(240, 240, 245)
+    MinimizeButton.Font = Enum.Font.GothamBold
+    MinimizeButton.TextSize = 14
+    Instance.new("UICorner", MinimizeButton).CornerRadius = UDim.new(0, 6)
+    
+    local isMinimized = false
+    MinimizeButton.MouseButton1Click:Connect(function()
+        isMinimized = not isMinimized
+        MinimizeButton.Text = isMinimized and "+" or "━"
+        TweenService:Create(MainFrame, TweenInfo.new(0.3), {
+            Size = isMinimized and UDim2.new(0, 350, 0, 50) or UDim2.new(0, 350, 0, 400)
+        }):Play()
+    end)
+    
+    -- Buttons container
+    local ButtonContainer = Instance.new("ScrollingFrame", MainFrame)
+    ButtonContainer.Name = "ButtonContainer"
+    ButtonContainer.Size = UDim2.new(1, -20, 1, -60)
+    ButtonContainer.Position = UDim2.new(0, 10, 0, 55)
+    ButtonContainer.BackgroundTransparency = 1
+    ButtonContainer.BorderSizePixel = 0
+    ButtonContainer.ScrollBarThickness = 4
+    ButtonContainer.ScrollBarImageColor3 = Color3.fromRGB(0, 191, 255)
+    ButtonContainer.CanvasSize = UDim2.new(0, 0, 0, 350)
+    
+    -- Toggle button function
+    local function createToggleButton(name, position, key, emoji)
+        local Button = Instance.new("TextButton", ButtonContainer)
+        Button.Name = name .. "Button"
+        Button.Size = UDim2.new(0.9, 0, 0, 40)
+        Button.Position = UDim2.new(0.05, 0, 0, position)
+        Button.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+        Button.Text = (emoji or "●") .. "  " .. name
+        Button.TextColor3 = Color3.fromRGB(240, 240, 245)
+        Button.Font = Enum.Font.Gotham
+        Button.TextSize = 14
+        Button.TextXAlignment = Enum.TextXAlignment.Left
+        Instance.new("UICorner", Button).CornerRadius = UDim.new(0, 8)
+        
+        local ButtonStroke = Instance.new("UIStroke", Button)
+        ButtonStroke.Color = Color3.fromRGB(0, 191, 255)
+        ButtonStroke.Thickness = 1
+        ButtonStroke.Transparency = 0.7
+        
+        local function updateButton()
+            local isActive = FuncionesActivas[key]
+            TweenService:Create(Button, TweenInfo.new(0.3), {
+                BackgroundColor3 = isActive and Color3.fromRGB(0, 191, 255) or Color3.fromRGB(50, 50, 60)
+            }):Play()
+            TweenService:Create(ButtonStroke, TweenInfo.new(0.3), {
+                Transparency = isActive and 0.2 or 0.7
+            }):Play()
+        end
+        
+        Button.MouseButton1Click:Connect(function()
+            FuncionesActivas[key] = not FuncionesActivas[key]
+            updateButton()
+            
+            -- Setup corresponding function
+            if key == "DoubleJump" then
+                setupDoubleJump()
+            elseif key == "AntiRagdoll" then
+                setupAntiRagdoll()
+            elseif key == "TornadoSpin" then
+                setupTornadoSpin()
+            elseif key == "FlyMode" then
+                setupFlyMode()
+            elseif key == "SpeedBoost" then
+                setupSpeedBoost()
+            end
+            
+            notify(name .. (FuncionesActivas[key] and " Activado" or " Desactivado"), 2)
+        end)
+        
+        updateButton()
     end
-end)
-U.InputChanged:Connect(function(i)
-    if drag and i.UserInputType == Enum.UserInputType.MouseMovement then
-        local d = i.Position - dStart
-        M.Position = UDim2.new(sPos.X.Scale, sPos.X.Offset + d.X, sPos.Y.Scale, sPos.Y.Offset + d.Y)
-    end
-end)
-U.InputEnded:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 then drag = false end
-end)
+    
+    -- Create toggle buttons
+    local buttonSpacing = 50
+    createToggleButton("Double Jump", 0, "DoubleJump", "🦘")
+    createToggleButton("Anti-Ragdoll", buttonSpacing * 1, "AntiRagdoll", "🛡")
+    createToggleButton("Tornado Spin", buttonSpacing * 2, "TornadoSpin", "🌪")
+    createToggleButton("Fly Mode", buttonSpacing * 3, "FlyMode", "✈")
+    createToggleButton("Speed Boost", buttonSpacing * 4, "SpeedBoost", "🏃")
+    
+    -- Unload button
+    local UnloadButton = Instance.new("TextButton", ButtonContainer)
+    UnloadButton.Name = "UnloadButton"
+    UnloadButton.Size = UDim2.new(0.9, 0, 0, 40)
+    UnloadButton.Position = UDim2.new(0.05, 0, 0, buttonSpacing * 5)
+    UnloadButton.BackgroundColor3 = Color3.fromRGB(220, 38, 38)
+    UnloadButton.Text = "🗑  Unload Script"
+    UnloadButton.TextColor3 = Color3.fromRGB(240, 240, 245)
+    UnloadButton.Font = Enum.Font.GothamBold
+    UnloadButton.TextSize = 14
+    Instance.new("UICorner", UnloadButton).CornerRadius = UDim.new(0, 8)
+    
+    UnloadButton.MouseButton1Click:Connect(function()
+        -- Disable all functions
+        for key in pairs(FuncionesActivas) do
+            FuncionesActivas[key] = false
+        end
+        
+        -- Disconnect all connections
+        for _, connection in pairs(Connections) do
+            if connection then connection:Disconnect() end
+        end
+        
+        -- Clean up physics objects
+        if FlyVelocity then FlyVelocity:Destroy() end
+        if FlyAttachment then FlyAttachment:Destroy() end
+        if BoostVelocity then BoostVelocity:Destroy() end
+        if BoostAttachment then BoostAttachment:Destroy() end
+        if HeliVelocity then HeliVelocity:Destroy() end
+        if HeliAttachment then HeliAttachment:Destroy() end
+        
+        -- Destroy UI
+        ScreenGui:Destroy()
+        
+        notify("Script Descargado", 3)
+    end)
+    
+    -- Make UI draggable
+    local dragging = false
+    local dragStart = nil
+    local startPos = nil
+    
+    MainFrame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = MainFrame.Position
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            MainFrame.Position = UDim2.new(
+                startPos.X.Scale,
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+    
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+    
+    -- Toggle UI with RightControl
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed or input.KeyCode ~= Enum.KeyCode.RightControl then return end
+        local isHidden = MainFrame.Position.Y.Scale > 0.9
+        TweenService:Create(MainFrame, TweenInfo.new(0.4), {
+            Position = isHidden and UDim2.new(0.5, -175, 0.5, -200) or UDim2.new(0.5, -175, 1.2, 0)
+        }):Play()
+    end)
+end
 
 -- ==========================================
--- THEME CHANGER
+-- INITIALIZATION
 -- ==========================================
-local function applyTheme(t)
-    THEME = t
-    C = THEMES[t]
-    M.BackgroundColor3 = C.BG
-    MS.Color = C.BRD
-    H.BackgroundColor3 = C.BG2
-    HG.Color = ColorSequence.new{ColorSequenceKeypoint.new(0, C.AC), ColorSequenceKeypoint.new(1, C.AC2)}
-    TIT.TextColor3 = C.TXT
-    SUB.TextColor3 = C.DIM
-    MIN.BackgroundColor3 = C.OFF
-    MIN.TextColor3 = C.TXT
-    SF.ScrollBarImageColor3 = C.AC
+createUI()
+notify("Sistema Cargado Exitosamente", 3)
+
+print("DelfinBot v3.5 - Professional Edition")
+print("Usuario autorizado: " .. LocalPlayer.Name)
+print("ID: " .. LocalPlayer.UserId)
