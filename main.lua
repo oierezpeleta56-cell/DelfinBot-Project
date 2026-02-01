@@ -76,6 +76,7 @@ local Toggles = {
     TornadoSpin = false,
     FlyMode = false,
     SpeedBoost = false,
+    AirWalk = false,
 }
 
 -- Tema de colores
@@ -120,6 +121,8 @@ local hasDoubleJumped = false
 local jumpCount = 0
 local lastJumpReset = tick()
 local lastInfiniteJump = 0
+local airTime = 0
+local lastGroundTouch = tick()
 
 -- ==========================================
 -- FUNCIONES AUXILIARES
@@ -165,10 +168,12 @@ local function humanDelay(min, max)
 end
 
 -- ==========================================
--- INFINITE JUMP SYSTEM (SAFE)
+-- INFINITE JUMP SYSTEM (SILENT MODE - ADVANCED BYPASS)
 -- ==========================================
 local lastInfiniteJump = 0
-local infiniteJumpCooldown = 0.15 -- Cooldown para evitar spam y detección
+local infiniteJumpCooldown = 0.15
+local airTime = 0
+local lastGroundTouch = tick()
 
 local function setupDoubleJump()
     if connections.doubleJump then
@@ -177,53 +182,88 @@ local function setupDoubleJump()
     if connections.landed then
         connections.landed:Disconnect()
     end
+    if connections.airTimeMonitor then
+        connections.airTimeMonitor:Disconnect()
+    end
     
     if not Toggles.DoubleJump then return end
     
-    local character, rootPart, humanoid = getCharacterComponents()
-    if not character or not humanoid then return end
-    
-    -- Detección del salto infinito con JumpRequest
-    connections.doubleJump = UserInputService.JumpRequest:Connect(function()
-        if not Toggles.DoubleJump then return end
+    pcall(function()
+        local character, rootPart, humanoid = getCharacterComponents()
+        if not character or not humanoid then return end
         
-        local now = tick()
+        -- Monitor de tiempo en el aire (State Refresh)
+        connections.airTimeMonitor = RunService.Heartbeat:Connect(function()
+            if not Toggles.DoubleJump then return end
+            
+            pcall(function()
+                local char, hrp, hum = getCharacterComponents()
+                if not char or not hrp or not hum then return end
+                
+                local state = hum:GetState()
+                
+                -- Detectar contacto con el suelo
+                if state == Enum.HumanoidStateType.Landed or 
+                   state == Enum.HumanoidStateType.Running or
+                   state == Enum.HumanoidStateType.RunningNoPhysics then
+                    airTime = 0
+                    lastGroundTouch = tick()
+                elseif state == Enum.HumanoidStateType.Freefall then
+                    airTime = tick() - lastGroundTouch
+                    
+                    -- State Refresh: Si llevamos >2 segundos en el aire, resetear timer
+                    -- Esto evita que el AC detecte suspensión anormal
+                    if airTime > 2 then
+                        -- Forzar mini-contacto con estado Running para resetear timer del servidor
+                        hum:ChangeState(Enum.HumanoidStateType.Running)
+                        task.wait(0.03) -- 3 frames
+                        hum:ChangeState(Enum.HumanoidStateType.Freefall)
+                        lastGroundTouch = tick()
+                        airTime = 0
+                    end
+                end
+            end)
+        end)
         
-        -- Cooldown para evitar detección por spam
-        if now - lastInfiniteJump < infiniteJumpCooldown then
-            return
-        end
-        
-        pcall(function()
-            local char, hrp, hum = getCharacterComponents()
-            if not char or not hrp or not hum then return end
+        -- Detección del salto infinito con JumpRequest (Silent Mode)
+        connections.doubleJump = UserInputService.JumpRequest:Connect(function()
+            if not Toggles.DoubleJump then return end
             
-            -- Verificación de altura para evitar problemas con el anticheat
-            -- Si estamos muy alto, reducir frecuencia
-            local rayParams = RaycastParams.new()
-            rayParams.FilterDescendantsInstances = {char}
-            rayParams.FilterType = Enum.RaycastFilterType.Blacklist
-            
-            local rayResult = workspace:Raycast(hrp.Position, Vector3.new(0, -1000, 0), rayParams)
-            local heightFromGround = rayResult and (hrp.Position.Y - rayResult.Position.Y) or 0
-            
-            -- Si estamos muy alto (>500 studs), incrementar cooldown temporalmente
-            if heightFromGround > 500 then
-                if now - lastInfiniteJump < 0.3 then
+            pcall(function()
+                local now = tick()
+                
+                -- Cooldown anti-spam
+                if now - lastInfiniteJump < infiniteJumpCooldown then
                     return
                 end
-            end
-            
-            -- Simplemente cambiar el estado a Jumping (método más seguro)
-            hum:ChangeState(Enum.HumanoidStateType.Jumping)
-            
-            lastInfiniteJump = now
+                
+                local char, hrp, hum = getCharacterComponents()
+                if not char or not hrp or not hum then return end
+                
+                local currentState = hum:GetState()
+                
+                -- Solo saltar si estamos en Freefall (en el aire)
+                if currentState == Enum.HumanoidStateType.Freefall then
+                    -- SILENT MODE: Resetear FallingDown timer ANTES del salto
+                    -- Esto hace creer al servidor que acabamos de entrar en Freefall
+                    hum:ChangeState(Enum.HumanoidStateType.Running)
+                    task.wait(0.02) -- 2 frames
+                    
+                    -- Ahora ejecutar el salto (servidor cree que es salto desde suelo)
+                    hum:ChangeState(Enum.HumanoidStateType.Jumping)
+                    
+                    -- Resetear contador de tiempo en el aire
+                    lastGroundTouch = tick()
+                    airTime = 0
+                    lastInfiniteJump = now
+                end
+            end)
         end)
     end)
 end
 
 -- ==========================================
--- ANTI-RAGDOLL SYSTEM (INFALLIBLE)
+-- ANTI-RAGDOLL SYSTEM (CFRAME UPRIGHT LOCK - ADVANCED)
 -- ==========================================
 local function setupAntiRagdoll()
     if connections.antiRagdoll then
@@ -238,91 +278,112 @@ local function setupAntiRagdoll()
     if connections.platformStandMonitor then
         connections.platformStandMonitor:Disconnect()
     end
+    if connections.cframeLock then
+        connections.cframeLock:Disconnect()
+    end
     
     if not Toggles.AntiRagdoll then return end
     
-    local character, rootPart, humanoid = getCharacterComponents()
-    if not character or not humanoid then return end
-    
-    -- MÉTODO 1: StateChanged para prevención inmediata de estados
-    connections.antiRagdoll = humanoid.StateChanged:Connect(function(oldState, newState)
-        if not Toggles.AntiRagdoll then return end
+    pcall(function()
+        local character, rootPart, humanoid = getCharacterComponents()
+        if not character or not humanoid then return end
         
-        if newState == Enum.HumanoidStateType.Ragdoll or 
-           newState == Enum.HumanoidStateType.FallingDown or
-           newState == Enum.HumanoidStateType.Seated then
-            -- Forzar estado de pie inmediatamente
-            humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-        end
-    end)
-    
-    -- MÉTODO 2: Monitor de PlatformStand y Sit (cambios de propiedades)
-    connections.platformStandMonitor = humanoid:GetPropertyChangedSignal("PlatformStand"):Connect(function()
-        if not Toggles.AntiRagdoll then return end
-        if humanoid.PlatformStand == true then
-            humanoid.PlatformStand = false
-        end
-    end)
-    
-    -- También monitorear Sit
-    humanoid:GetPropertyChangedSignal("Sit"):Connect(function()
-        if not Toggles.AntiRagdoll then return end
-        if humanoid.Sit == true then
-            humanoid.Sit = false
-        end
-    end)
-    
-    -- MÉTODO 3: RunService.Heartbeat para rigidez constante
-    connections.antiRagdollHeartbeat = RunService.Heartbeat:Connect(function()
-        if not Toggles.AntiRagdoll then return end
+        -- MÉTODO 1: StateChanged para prevención inmediata
+        connections.antiRagdoll = humanoid.StateChanged:Connect(function(oldState, newState)
+            if not Toggles.AntiRagdoll then return end
+            
+            pcall(function()
+                if newState == Enum.HumanoidStateType.Ragdoll or 
+                   newState == Enum.HumanoidStateType.FallingDown or
+                   newState == Enum.HumanoidStateType.Seated then
+                    humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+                end
+            end)
+        end)
+        
+        -- MÉTODO 2: PropertyChanged Monitors
+        pcall(function()
+            connections.platformStandMonitor = humanoid:GetPropertyChangedSignal("PlatformStand"):Connect(function()
+                if not Toggles.AntiRagdoll then return end
+                pcall(function()
+                    if humanoid.PlatformStand == true then
+                        humanoid.PlatformStand = false
+                    end
+                end)
+            end)
+        end)
         
         pcall(function()
-            local char = LocalPlayer.Character
-            if not char then return end
+            humanoid:GetPropertyChangedSignal("Sit"):Connect(function()
+                if not Toggles.AntiRagdoll then return end
+                pcall(function()
+                    if humanoid.Sit == true then
+                        humanoid.Sit = false
+                    end
+                end)
+            end)
+        end)
+        
+        -- MÉTODO 3: CFRAME UPRIGHT LOCK (RunService.Stepped)
+        -- Este es el método más avanzado - fuerza orientación vertical
+        connections.cframeLock = RunService.Stepped:Connect(function()
+            if not Toggles.AntiRagdoll then return end
             
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if not hum then return end
-            
-            -- Forzar propiedades críticas
-            if hum.PlatformStand then
-                hum.PlatformStand = false
-            end
-            
-            if hum.Sit then
-                hum.Sit = false
-            end
-            
-            local currentState = hum:GetState()
-            
-            -- Prevenir estados de ragdoll/caída
-            if currentState == Enum.HumanoidStateType.Ragdoll or 
-               currentState == Enum.HumanoidStateType.FallingDown or
-               currentState == Enum.HumanoidStateType.Seated then
-                hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-            end
-            
-            -- Mantener todos los Motor6D activos (rigidez)
-            for _, descendant in pairs(char:GetDescendants()) do
-                if descendant:IsA("Motor6D") then
-                    if not descendant.Enabled then
-                        descendant.Enabled = true
+            pcall(function()
+                local char = LocalPlayer.Character
+                if not char then return end
+                
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                
+                if not hrp or not hum then return end
+                
+                -- Forzar propiedades críticas
+                if hum.PlatformStand then hum.PlatformStand = false end
+                if hum.Sit then hum.Sit = false end
+                
+                local currentState = hum:GetState()
+                
+                -- Prevenir estados de ragdoll
+                if currentState == Enum.HumanoidStateType.Ragdoll or 
+                   currentState == Enum.HumanoidStateType.FallingDown or
+                   currentState == Enum.HumanoidStateType.Seated then
+                    hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+                end
+                
+                -- CFRAME UPRIGHT LOCK: Forzar orientación vertical
+                -- Esto mantiene al personaje siempre mirando hacia arriba
+                local currentCFrame = hrp.CFrame
+                local position = currentCFrame.Position
+                local lookVector = currentCFrame.LookVector
+                
+                -- Crear CFrame con orientación forzada hacia arriba
+                -- Mantener posición y dirección horizontal, pero forzar eje Y vertical
+                local uprightLookVector = Vector3.new(lookVector.X, 0, lookVector.Z).Unit
+                local upVector = Vector3.new(0, 1, 0) -- Siempre hacia arriba
+                
+                -- Construir CFrame con orientación bloqueada
+                local uprightCFrame = CFrame.new(position) * 
+                                     CFrame.fromMatrix(Vector3.zero, 
+                                                      uprightLookVector:Cross(upVector), 
+                                                      upVector, 
+                                                      uprightLookVector)
+                
+                -- Aplicar CFrame solo si hay desviación significativa (>5 grados)
+                local dotProduct = currentCFrame.UpVector:Dot(Vector3.new(0, 1, 0))
+                if dotProduct < 0.996 then -- cos(5°) ≈ 0.996
+                    hrp.CFrame = uprightCFrame
+                end
+                
+                -- Mantener todos los Motor6D activos (rigidez)
+                for _, descendant in pairs(char:GetDescendants()) do
+                    if descendant:IsA("Motor6D") then
+                        if not descendant.Enabled then
+                            descendant.Enabled = true
+                        end
                     end
                 end
-            end
-            
-            -- CRÍTICO para Infinite Jump: No confundir velocidad de caída con ragdoll
-            -- Solo intervenir si realmente estamos en ragdoll, no por velocidad
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                -- Si la velocidad Y es muy negativa pero NO estamos en ragdoll, no hacer nada
-                -- Esto permite caídas normales durante Infinite Jump
-                if hrp.AssemblyLinearVelocity.Y < -100 and currentState ~= Enum.HumanoidStateType.Freefall then
-                    -- Solo entonces verificar si es ragdoll real
-                    if currentState == Enum.HumanoidStateType.Ragdoll then
-                        hum:ChangeState(Enum.HumanoidStateType.Freefall)
-                    end
-                end
-            end
+            end)
         end)
     end)
 end
@@ -517,6 +578,100 @@ local function startSpeedBoost()
 end
 
 -- ==========================================
+-- AIR WALK (CLIENT-SIDE VECTOR PLATFORM - ADVANCED)
+-- ==========================================
+local airWalkPlatform = nil
+local airWalkRunning = false
+
+local function setupAirWalk()
+    if connections.airWalk then
+        connections.airWalk:Disconnect()
+    end
+    
+    if not Toggles.AirWalk then
+        -- Limpiar plataforma si existe
+        if airWalkPlatform then
+            pcall(function() airWalkPlatform:Destroy() end)
+            airWalkPlatform = nil
+        end
+        airWalkRunning = false
+        return
+    end
+    
+    if airWalkRunning then return end
+    airWalkRunning = true
+    
+    pcall(function()
+        local character, rootPart, humanoid = getCharacterComponents()
+        if not character or not rootPart then return end
+        
+        -- Crear plataforma client-side invisible
+        airWalkPlatform = Instance.new("Part")
+        airWalkPlatform.Name = "AirPlatform_" .. math.random(10000, 99999)
+        airWalkPlatform.Size = Vector3.new(10, 0.5, 10)
+        airWalkPlatform.Anchored = true
+        airWalkPlatform.CanCollide = true
+        airWalkPlatform.Transparency = 1 -- Invisible
+        airWalkPlatform.Material = Enum.Material.SmoothPlastic
+        
+        -- LocalTransparencyModifier para invisibilidad total (incluso en renders locales)
+        pcall(function()
+            airWalkPlatform.LocalTransparencyModifier = 1
+        end)
+        
+        -- Configurar para que solo el cliente lo vea/colisione
+        airWalkPlatform.Parent = workspace
+        
+        -- HEARTBEAT LOOP: Actualizar posición cada frame
+        connections.airWalk = RunService.Heartbeat:Connect(function()
+            if not Toggles.AirWalk then return end
+            
+            pcall(function()
+                local char, hrp, hum = getCharacterComponents()
+                if not char or not hrp or not hum then return end
+                
+                if not airWalkPlatform or not airWalkPlatform.Parent then
+                    -- Recrear si fue destruida
+                    airWalkPlatform = Instance.new("Part")
+                    airWalkPlatform.Name = "AirPlatform_" .. math.random(10000, 99999)
+                    airWalkPlatform.Size = Vector3.new(10, 0.5, 10)
+                    airWalkPlatform.Anchored = true
+                    airWalkPlatform.CanCollide = true
+                    airWalkPlatform.Transparency = 1
+                    airWalkPlatform.Material = Enum.Material.SmoothPlastic
+                    pcall(function() airWalkPlatform.LocalTransparencyModifier = 1 end)
+                    airWalkPlatform.Parent = workspace
+                end
+                
+                -- Posicionar plataforma exactamente 0.1 studs debajo de los pies
+                local feetPosition = hrp.Position - Vector3.new(0, 3, 0) -- ~3 studs = altura del personaje
+                local platformPosition = feetPosition - Vector3.new(0, 0.1, 0)
+                
+                -- VELOCITY MATCHING: Hacer que la plataforma se mueva con el jugador
+                -- Esto hace que la velocidad parezca natural para el servidor
+                local currentVelocity = hrp.AssemblyLinearVelocity
+                
+                -- Actualizar posición con la velocidad del jugador
+                airWalkPlatform.CFrame = CFrame.new(
+                    platformPosition + (currentVelocity * 0.016) -- 1 frame de compensación
+                )
+                
+                -- Si el jugador está cayendo muy rápido, ajustar altura
+                if currentVelocity.Y < -50 then
+                    -- Subir plataforma gradualmente para "atrapar" al jugador
+                    airWalkPlatform.CFrame = CFrame.new(platformPosition + Vector3.new(0, 0.5, 0))
+                end
+                
+                -- Verificar que la plataforma esté activa para colisiones
+                if not airWalkPlatform.CanCollide then
+                    airWalkPlatform.CanCollide = true
+                end
+            end)
+        end)
+    end)
+end
+
+-- ==========================================
 -- CHARACTER RESPAWN HANDLER
 -- ==========================================
 connections.characterAdded = LocalPlayer.CharacterAdded:Connect(function(character)
@@ -528,10 +683,20 @@ connections.characterAdded = LocalPlayer.CharacterAdded:Connect(function(charact
     jumpCount = 0
     lastJumpReset = tick()
     lastInfiniteJump = 0
+    airTime = 0
+    lastGroundTouch = tick()
+    
+    -- Limpiar Air Walk platform si existe
+    if airWalkPlatform then
+        pcall(function() airWalkPlatform:Destroy() end)
+        airWalkPlatform = nil
+        airWalkRunning = false
+    end
     
     -- Reactivar funciones
     if Toggles.DoubleJump then setupDoubleJump() end
     if Toggles.AntiRagdoll then setupAntiRagdoll() end
+    if Toggles.AirWalk then setupAirWalk() end
 end)
 
 -- ==========================================
@@ -943,6 +1108,7 @@ local function createToggleButton(name, yPosition, toggleKey, startFunction, emo
         -- Funciones especiales que necesitan setup
         if toggleKey == "DoubleJump" then setupDoubleJump() end
         if toggleKey == "AntiRagdoll" then setupAntiRagdoll() end
+        if toggleKey == "AirWalk" then setupAirWalk() end
         
         notify(name .. (Toggles[toggleKey] and " ✓" or " ✗"), 2)
     end)
@@ -959,15 +1125,16 @@ local yStep = 55
 createToggleButton("Auto Bat (Kill Aura)", yStart + yStep * 0, "AutoBat", startAutoBat, "⚔")
 createToggleButton("Infinite Jump", yStart + yStep * 1, "DoubleJump", nil, "🦘")
 createToggleButton("Anti-Ragdoll", yStart + yStep * 2, "AntiRagdoll", nil, "🛡")
-createToggleButton("Tornado Spin", yStart + yStep * 3, "TornadoSpin", startTornadoSpin, "🌪")
-createToggleButton("Fly Mode", yStart + yStep * 4, "FlyMode", startFlyMode, "✈")
-createToggleButton("Speed Booster", yStart + yStep * 5, "SpeedBoost", startSpeedBoost, "🏃")
+createToggleButton("Air Walk", yStart + yStep * 3, "AirWalk", setupAirWalk, "☁")
+createToggleButton("Tornado Spin", yStart + yStep * 4, "TornadoSpin", startTornadoSpin, "🌪")
+createToggleButton("Fly Mode", yStart + yStep * 5, "FlyMode", startFlyMode, "✈")
+createToggleButton("Speed Booster", yStart + yStep * 6, "SpeedBoost", startSpeedBoost, "🏃")
 
 -- Theme Button
 local ThemeButton = Instance.new("TextButton", ScrollFrame)
 ThemeButton.Text = "🎨  Cambiar Tema (Cyan/Red)"
 ThemeButton.Size = UDim2.new(0.96, 0, 0, 45)
-ThemeButton.Position = UDim2.new(0.02, 0, 0, yStart + yStep * 6)
+ThemeButton.Position = UDim2.new(0.02, 0, 0, yStart + yStep * 7)
 ThemeButton.BackgroundColor3 = Colors.Accent
 ThemeButton.TextColor3 = Colors.Text
 ThemeButton.Font = Enum.Font.GothamBold
@@ -984,7 +1151,7 @@ end)
 local UnloadButton = Instance.new("TextButton", ScrollFrame)
 UnloadButton.Text = "🗑  Unload Script"
 UnloadButton.Size = UDim2.new(0.96, 0, 0, 45)
-UnloadButton.Position = UDim2.new(0.02, 0, 0, yStart + yStep * 7)
+UnloadButton.Position = UDim2.new(0.02, 0, 0, yStart + yStep * 8)
 UnloadButton.BackgroundColor3 = Color3.fromRGB(220, 38, 38)
 UnloadButton.TextColor3 = Colors.Text
 UnloadButton.Font = Enum.Font.GothamBold
@@ -1013,6 +1180,12 @@ UnloadButton.MouseButton1Click:Connect(function()
     if boostAttachment then boostAttachment:Destroy() end
     if tornadoVelocity then tornadoVelocity:Destroy() end
     if tornadoAttachment then tornadoAttachment:Destroy() end
+    
+    -- Limpiar Air Walk platform
+    if airWalkPlatform then
+        pcall(function() airWalkPlatform:Destroy() end)
+        airWalkPlatform = nil
+    end
     
     -- Destruir GUI
     ScreenGui:Destroy()
