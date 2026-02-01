@@ -72,7 +72,6 @@ local Config = {
 local Toggles = {
     AutoBat = false,
     DoubleJump = false,
-    AntiRagdoll = false,
     TornadoSpin = false,
     FlyMode = false,
     SpeedBoost = false,
@@ -164,94 +163,87 @@ local function humanDelay(min, max)
 end
 
 -- ==========================================
--- INFINITE JUMP SYSTEM (CHILI HUB TECHNIQUE - NO PLATFORM)
+-- YELLOW SKY-BRIDGE (CLIENT-SIDE PLATFORM)
 -- ==========================================
-local function setupInfiniteJump()
-    if connections.infiniteJump then
-        connections.infiniteJump:Disconnect()
+local skyBridge = nil
+local skyBridgeRunning = false
+
+local function setupSkyBridge()
+    if connections.skyBridge then
+        connections.skyBridge:Disconnect()
     end
     
-    if not Toggles.DoubleJump then return end
+    if not Toggles.DoubleJump then
+        -- Limpiar plataforma si se desactiva
+        if skyBridge then
+            pcall(function()
+                skyBridge:Destroy()
+            end)
+            skyBridge = nil
+        end
+        skyBridgeRunning = false
+        return
+    end
+    
+    if skyBridgeRunning then return end
+    skyBridgeRunning = true
     
     pcall(function()
-        local character, rootPart, humanoid = getCharacterComponents()
-        if not character or not humanoid then return end
+        local camera = workspace.CurrentCamera
+        if not camera then return end
         
-        -- CHILI HUB TECHNIQUE: JumpRequest con reset de estado
-        connections.infiniteJump = UserInputService.JumpRequest:Connect(function()
+        -- Crear plataforma amarilla neón
+        skyBridge = Instance.new("Part")
+        skyBridge.Name = "SkyBridge_" .. math.random(10000, 99999)
+        skyBridge.Size = Vector3.new(10, 0.5, 10)
+        skyBridge.Anchored = true
+        skyBridge.CanCollide = true
+        skyBridge.Color = Color3.fromRGB(255, 255, 0) -- Amarillo
+        skyBridge.Material = Enum.Material.Neon
+        skyBridge.Transparency = 0.5 -- Semi-transparente
+        skyBridge.CastShadow = false
+        
+        -- Parent a CurrentCamera (invisible para servidor)
+        skyBridge.Parent = camera
+        
+        -- RenderStepped: Actualizar posición cada frame
+        connections.skyBridge = RunService.RenderStepped:Connect(function()
             if not Toggles.DoubleJump then return end
             
             pcall(function()
-                local char, hrp, hum = getCharacterComponents()
-                if not char or not hrp or not hum then return end
+                local char, hrp = getCharacterComponents()
+                if not char or not hrp then return end
                 
-                -- BYPASS DE MUERTE POR CAÍDA
-                -- Resetear velocidad vertical a valor pequeño positivo
-                -- Esto engaña al contador de tiempo de caída del servidor
-                if hrp.Velocity.Y < -10 then
-                    hrp.Velocity = Vector3.new(
-                        hrp.Velocity.X,
-                        5, -- Pequeño valor positivo
-                        hrp.Velocity.Z
-                    )
+                -- Verificar que la plataforma existe
+                if not skyBridge or not skyBridge.Parent then
+                    -- Recrear si fue destruida
+                    local cam = workspace.CurrentCamera
+                    if cam then
+                        skyBridge = Instance.new("Part")
+                        skyBridge.Name = "SkyBridge_" .. math.random(10000, 99999)
+                        skyBridge.Size = Vector3.new(10, 0.5, 10)
+                        skyBridge.Anchored = true
+                        skyBridge.CanCollide = true
+                        skyBridge.Color = Color3.fromRGB(255, 255, 0)
+                        skyBridge.Material = Enum.Material.Neon
+                        skyBridge.Transparency = 0.5
+                        skyBridge.CastShadow = false
+                        skyBridge.Parent = cam
+                    end
                 end
                 
-                -- RESET DE ESTADO: Forzar estado Jumping
-                -- No usamos fuerzas, solo cambio de estado
-                hum:ChangeState(Enum.HumanoidStateType.Jumping)
-            end)
-        end)
-    end)
-end
-
--- ==========================================
--- ANTI-RAGDOLL SYSTEM (CHILI HUB TECHNIQUE)
--- ==========================================
-local function setupAntiRagdoll()
-    if connections.antiRagdoll then
-        connections.antiRagdoll:Disconnect()
-    end
-    
-    if not Toggles.AntiRagdoll then return end
-    
-    pcall(function()
-        local character, rootPart, humanoid = getCharacterComponents()
-        if not character or not humanoid then return end
-        
-        -- CHILI HUB TECHNIQUE: RunService.Stepped para control total de física
-        connections.antiRagdoll = RunService.Stepped:Connect(function()
-            if not Toggles.AntiRagdoll then return end
-            
-            pcall(function()
-                local char = LocalPlayer.Character
-                if not char then return end
+                if not skyBridge then return end
                 
-                local hrp = char:FindFirstChild("HumanoidRootPart")
-                local hum = char:FindFirstChildOfClass("Humanoid")
+                -- Posicionar exactamente 0.1 studs debajo de los pies
+                local feetPosition = hrp.Position - Vector3.new(0, 3, 0) -- Altura del personaje
+                local bridgeY = feetPosition.Y - 0.1
                 
-                if not hrp or not hum or hum.Health <= 0 then return end
-                
-                -- VELOCITY/ROTVVELOCITY CLAMPING (核心技术)
-                -- Forzar RotVelocity a cero = No rotación = No ragdoll
-                hrp.RotVelocity = Vector3.new(0, 0, 0)
-                
-                -- Limitar velocidad de caída (evita muerte por caída extrema)
-                hrp.Velocity = Vector3.new(
-                    hrp.Velocity.X, 
-                    math.max(hrp.Velocity.Y, -50), -- Máximo -50 studs/s de caída
-                    hrp.Velocity.Z
+                -- Actualizar posición de la plataforma
+                skyBridge.CFrame = CFrame.new(
+                    hrp.Position.X,
+                    bridgeY,
+                    hrp.Position.Z
                 )
-                
-                -- DESACTIVAR ESTADOS DE "MUERTE FÍSICA"
-                hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-                hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
-                hum:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
-                
-                -- BLOQUEO INSTANTÁNEO DE SIT Y PLATFORMSTAND
-                if hum.Sit or hum.PlatformStand then
-                    hum.Sit = false
-                    hum.PlatformStand = false
-                end
             end)
         end)
     end)
@@ -546,9 +538,19 @@ end
 connections.characterAdded = LocalPlayer.CharacterAdded:Connect(function(character)
     task.wait(1)
     
-    -- Reactivar funciones
-    if Toggles.DoubleJump then setupInfiniteJump() end
-    if Toggles.AntiRagdoll then setupAntiRagdoll() end
+    -- Limpiar Sky-Bridge si existe
+    if skyBridge then
+        pcall(function()
+            skyBridge:Destroy()
+        end)
+        skyBridge = nil
+        skyBridgeRunning = false
+    end
+    
+    -- Reactivar Sky-Bridge si estaba activo
+    if Toggles.DoubleJump then
+        setupSkyBridge()
+    end
 end)
 
 -- ==========================================
@@ -957,9 +959,8 @@ local function createToggleButton(name, yPosition, toggleKey, startFunction, emo
             startFunction()
         end
         
-        -- Funciones especiales que necesitan setup
-        if toggleKey == "DoubleJump" then setupInfiniteJump() end
-        if toggleKey == "AntiRagdoll" then setupAntiRagdoll() end
+        -- Función especial que necesita setup
+        if toggleKey == "DoubleJump" then setupSkyBridge() end
         
         notify(name .. (Toggles[toggleKey] and " ✓" or " ✗"), 2)
     end)
@@ -974,17 +975,16 @@ local yStart = 5
 local yStep = 55
 
 createToggleButton("Auto Bat (Kill Aura)", yStart + yStep * 0, "AutoBat", startAutoBat, "⚔")
-createToggleButton("Infinite Jump", yStart + yStep * 1, "DoubleJump", setupInfiniteJump, "🦘")
-createToggleButton("Anti-Ragdoll", yStart + yStep * 2, "AntiRagdoll", nil, "🛡")
-createToggleButton("Tornado Spin", yStart + yStep * 3, "TornadoSpin", startTornadoSpin, "🌪")
-createToggleButton("Fly Mode", yStart + yStep * 4, "FlyMode", startFlyMode, "✈")
-createToggleButton("Speed Booster", yStart + yStep * 5, "SpeedBoost", startSpeedBoost, "🏃")
+createToggleButton("Yellow Sky-Bridge", yStart + yStep * 1, "DoubleJump", setupSkyBridge, "🌉")
+createToggleButton("Tornado Spin", yStart + yStep * 2, "TornadoSpin", startTornadoSpin, "🌪")
+createToggleButton("Fly Mode", yStart + yStep * 3, "FlyMode", startFlyMode, "✈")
+createToggleButton("Speed Booster", yStart + yStep * 4, "SpeedBoost", startSpeedBoost, "🏃")
 
 -- Theme Button
 local ThemeButton = Instance.new("TextButton", ScrollFrame)
 ThemeButton.Text = "🎨  Cambiar Tema (Cyan/Red)"
 ThemeButton.Size = UDim2.new(0.96, 0, 0, 45)
-ThemeButton.Position = UDim2.new(0.02, 0, 0, yStart + yStep * 6)
+ThemeButton.Position = UDim2.new(0.02, 0, 0, yStart + yStep * 5)
 ThemeButton.BackgroundColor3 = Colors.Accent
 ThemeButton.TextColor3 = Colors.Text
 ThemeButton.Font = Enum.Font.GothamBold
@@ -1001,7 +1001,7 @@ end)
 local UnloadButton = Instance.new("TextButton", ScrollFrame)
 UnloadButton.Text = "🗑  Unload Script"
 UnloadButton.Size = UDim2.new(0.96, 0, 0, 45)
-UnloadButton.Position = UDim2.new(0.02, 0, 0, yStart + yStep * 7)
+UnloadButton.Position = UDim2.new(0.02, 0, 0, yStart + yStep * 6)
 UnloadButton.BackgroundColor3 = Color3.fromRGB(220, 38, 38)
 UnloadButton.TextColor3 = Colors.Text
 UnloadButton.Font = Enum.Font.GothamBold
@@ -1030,6 +1030,14 @@ UnloadButton.MouseButton1Click:Connect(function()
     if boostAttachment then boostAttachment:Destroy() end
     if tornadoVelocity then tornadoVelocity:Destroy() end
     if tornadoAttachment then tornadoAttachment:Destroy() end
+    
+    -- Limpiar Sky-Bridge
+    if skyBridge then
+        pcall(function()
+            skyBridge:Destroy()
+        end)
+        skyBridge = nil
+    end
     
     -- Destruir GUI
     ScreenGui:Destroy()
