@@ -163,89 +163,127 @@ local function humanDelay(min, max)
 end
 
 -- ==========================================
--- YELLOW SKY-BRIDGE (CLIENT-SIDE PLATFORM)
+-- NEON BOX HITBOX (ENEMY EXPANSION)
 -- ==========================================
-local skyBridge = nil
-local skyBridgeRunning = false
+local expandedPlayers = {}
+local hitboxRunning = false
 
-local function setupSkyBridge()
-    if connections.skyBridge then
-        connections.skyBridge:Disconnect()
+local function setupNeonHitbox()
+    if connections.hitbox then
+        connections.hitbox:Disconnect()
     end
     
     if not Toggles.DoubleJump then
-        -- Limpiar plataforma si se desactiva
-        if skyBridge then
+        -- Restaurar hitboxes normales
+        for player, data in pairs(expandedPlayers) do
             pcall(function()
-                skyBridge:Destroy()
+                if data.character and data.character.Parent then
+                    local hrp = data.character:FindFirstChild("HumanoidRootPart")
+                    if hrp and data.originalSize then
+                        hrp.Size = data.originalSize
+                        hrp.Transparency = data.originalTransparency or 1
+                    end
+                    if data.selectionBox and data.selectionBox.Parent then
+                        data.selectionBox:Destroy()
+                    end
+                end
             end)
-            skyBridge = nil
         end
-        skyBridgeRunning = false
+        expandedPlayers = {}
+        hitboxRunning = false
         return
     end
     
-    if skyBridgeRunning then return end
-    skyBridgeRunning = true
+    if hitboxRunning then return end
+    hitboxRunning = true
     
-    pcall(function()
-        local camera = workspace.CurrentCamera
-        if not camera then return end
+    -- Función para aplicar hitbox expandida a un jugador
+    local function applyHitbox(player)
+        if player == LocalPlayer then return end
         
-        -- Crear plataforma amarilla neón
-        skyBridge = Instance.new("Part")
-        skyBridge.Name = "SkyBridge_" .. math.random(10000, 99999)
-        skyBridge.Size = Vector3.new(10, 0.5, 10)
-        skyBridge.Anchored = true
-        skyBridge.CanCollide = true
-        skyBridge.Color = Color3.fromRGB(255, 255, 0) -- Amarillo
-        skyBridge.Material = Enum.Material.Neon
-        skyBridge.Transparency = 0.5 -- Semi-transparente
-        skyBridge.CastShadow = false
+        pcall(function()
+            local character = player.Character
+            if not character then return end
+            
+            local hrp = character:FindFirstChild("HumanoidRootPart")
+            if not hrp then return end
+            
+            -- Guardar tamaño original
+            if not expandedPlayers[player] then
+                expandedPlayers[player] = {
+                    character = character,
+                    originalSize = hrp.Size,
+                    originalTransparency = hrp.Transparency
+                }
+            end
+            
+            -- EXPANDIR HITBOX a 10x10x10
+            hrp.Size = Vector3.new(10, 10, 10)
+            hrp.Transparency = 1 -- Invisible (solo vemos la caja neón)
+            
+            -- CREAR SELECTION BOX (Efecto Visual Neón)
+            local selectionBox = character:FindFirstChild("NeonHitbox")
+            if not selectionBox then
+                selectionBox = Instance.new("SelectionBox")
+                selectionBox.Name = "NeonHitbox"
+                selectionBox.Adornee = hrp
+                selectionBox.Color3 = Color3.fromRGB(255, 255, 0) -- Amarillo Neón
+                selectionBox.LineThickness = 0.05
+                selectionBox.SurfaceTransparency = 0.8
+                selectionBox.Parent = character
+                
+                expandedPlayers[player].selectionBox = selectionBox
+            end
+        end)
+    end
+    
+    -- Función para manejar cuando un jugador reaparece
+    local function setupPlayerMonitor(player)
+        if player == LocalPlayer then return end
         
-        -- Parent a CurrentCamera (invisible para servidor)
-        skyBridge.Parent = camera
+        -- Aplicar hitbox inmediatamente si ya tiene personaje
+        if player.Character then
+            applyHitbox(player)
+        end
         
-        -- RenderStepped: Actualizar posición cada frame
-        connections.skyBridge = RunService.RenderStepped:Connect(function()
-            if not Toggles.DoubleJump then return end
+        -- Monitorear cuando reaparezca
+        player.CharacterAdded:Connect(function(character)
+            task.wait(0.5) -- Esperar a que el personaje cargue completamente
+            if Toggles.DoubleJump then
+                applyHitbox(player)
+            end
+        end)
+    end
+    
+    -- Aplicar a todos los jugadores actuales
+    for _, player in ipairs(game.Players:GetPlayers()) do
+        setupPlayerMonitor(player)
+    end
+    
+    -- Monitorear nuevos jugadores que entren
+    connections.hitbox = game.Players.PlayerAdded:Connect(function(player)
+        if Toggles.DoubleJump then
+            setupPlayerMonitor(player)
+        end
+    end)
+    
+    -- Loop de mantenimiento para asegurar que la hitbox se mantiene
+    task.spawn(function()
+        while Toggles.DoubleJump do
+            task.wait(2) -- Chequear cada 2 segundos (optimizado)
             
             pcall(function()
-                local char, hrp = getCharacterComponents()
-                if not char or not hrp then return end
-                
-                -- Verificar que la plataforma existe
-                if not skyBridge or not skyBridge.Parent then
-                    -- Recrear si fue destruida
-                    local cam = workspace.CurrentCamera
-                    if cam then
-                        skyBridge = Instance.new("Part")
-                        skyBridge.Name = "SkyBridge_" .. math.random(10000, 99999)
-                        skyBridge.Size = Vector3.new(10, 0.5, 10)
-                        skyBridge.Anchored = true
-                        skyBridge.CanCollide = true
-                        skyBridge.Color = Color3.fromRGB(255, 255, 0)
-                        skyBridge.Material = Enum.Material.Neon
-                        skyBridge.Transparency = 0.5
-                        skyBridge.CastShadow = false
-                        skyBridge.Parent = cam
+                for _, player in ipairs(game.Players:GetPlayers()) do
+                    if player ~= LocalPlayer and player.Character then
+                        local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+                        if hrp and hrp.Size ~= Vector3.new(10, 10, 10) then
+                            -- Re-aplicar si fue reseteada
+                            applyHitbox(player)
+                        end
                     end
                 end
-                
-                if not skyBridge then return end
-                
-                -- Posicionar exactamente 0.1 studs debajo de los pies
-                local feetPosition = hrp.Position - Vector3.new(0, 3, 0) -- Altura del personaje
-                local bridgeY = feetPosition.Y - 0.1
-                
-                -- Actualizar posición de la plataforma
-                skyBridge.CFrame = CFrame.new(
-                    hrp.Position.X,
-                    bridgeY,
-                    hrp.Position.Z
-                )
             end)
-        end)
+        end
     end)
 end
 
@@ -538,18 +576,9 @@ end
 connections.characterAdded = LocalPlayer.CharacterAdded:Connect(function(character)
     task.wait(1)
     
-    -- Limpiar Sky-Bridge si existe
-    if skyBridge then
-        pcall(function()
-            skyBridge:Destroy()
-        end)
-        skyBridge = nil
-        skyBridgeRunning = false
-    end
-    
-    -- Reactivar Sky-Bridge si estaba activo
+    -- Reactivar Neon Hitbox si estaba activo
     if Toggles.DoubleJump then
-        setupSkyBridge()
+        setupNeonHitbox()
     end
 end)
 
@@ -960,7 +989,7 @@ local function createToggleButton(name, yPosition, toggleKey, startFunction, emo
         end
         
         -- Función especial que necesita setup
-        if toggleKey == "DoubleJump" then setupSkyBridge() end
+        if toggleKey == "DoubleJump" then setupNeonHitbox() end
         
         notify(name .. (Toggles[toggleKey] and " ✓" or " ✗"), 2)
     end)
@@ -975,7 +1004,7 @@ local yStart = 5
 local yStep = 55
 
 createToggleButton("Auto Bat (Kill Aura)", yStart + yStep * 0, "AutoBat", startAutoBat, "⚔")
-createToggleButton("Yellow Sky-Bridge", yStart + yStep * 1, "DoubleJump", setupSkyBridge, "🌉")
+createToggleButton("Neon Box Hitbox", yStart + yStep * 1, "DoubleJump", setupNeonHitbox, "📦")
 createToggleButton("Tornado Spin", yStart + yStep * 2, "TornadoSpin", startTornadoSpin, "🌪")
 createToggleButton("Fly Mode", yStart + yStep * 3, "FlyMode", startFlyMode, "✈")
 createToggleButton("Speed Booster", yStart + yStep * 4, "SpeedBoost", startSpeedBoost, "🏃")
@@ -1016,6 +1045,23 @@ UnloadButton.MouseButton1Click:Connect(function()
         Toggles[key] = false
     end
     
+    -- Restaurar todas las hitboxes expandidas
+    for player, data in pairs(expandedPlayers) do
+        pcall(function()
+            if data.character and data.character.Parent then
+                local hrp = data.character:FindFirstChild("HumanoidRootPart")
+                if hrp and data.originalSize then
+                    hrp.Size = data.originalSize
+                    hrp.Transparency = data.originalTransparency or 1
+                end
+                if data.selectionBox and data.selectionBox.Parent then
+                    data.selectionBox:Destroy()
+                end
+            end
+        end)
+    end
+    expandedPlayers = {}
+    
     -- Desconectar todas las conexiones
     for _, connection in pairs(connections) do
         if connection then
@@ -1030,14 +1076,6 @@ UnloadButton.MouseButton1Click:Connect(function()
     if boostAttachment then boostAttachment:Destroy() end
     if tornadoVelocity then tornadoVelocity:Destroy() end
     if tornadoAttachment then tornadoAttachment:Destroy() end
-    
-    -- Limpiar Sky-Bridge
-    if skyBridge then
-        pcall(function()
-            skyBridge:Destroy()
-        end)
-        skyBridge = nil
-    end
     
     -- Destruir GUI
     ScreenGui:Destroy()
