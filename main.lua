@@ -119,6 +119,7 @@ local canDoubleJump = false
 local hasDoubleJumped = false
 local jumpCount = 0
 local lastJumpReset = tick()
+local lastInfiniteJump = 0
 
 -- ==========================================
 -- FUNCIONES AUXILIARES
@@ -164,8 +165,11 @@ local function humanDelay(min, max)
 end
 
 -- ==========================================
--- DOUBLE JUMP SYSTEM
+-- INFINITE JUMP SYSTEM (SAFE)
 -- ==========================================
+local lastInfiniteJump = 0
+local infiniteJumpCooldown = 0.15 -- Cooldown para evitar spam y detección
+
 local function setupDoubleJump()
     if connections.doubleJump then
         connections.doubleJump:Disconnect()
@@ -179,71 +183,47 @@ local function setupDoubleJump()
     local character, rootPart, humanoid = getCharacterComponents()
     if not character or not humanoid then return end
     
-    -- Reset del double jump al tocar el suelo
-    connections.landed = humanoid.StateChanged:Connect(function(oldState, newState)
-        if not Toggles.DoubleJump then return end
-        
-        if newState == Enum.HumanoidStateType.Landed then
-            canDoubleJump = true
-            hasDoubleJumped = false
-        elseif newState == Enum.HumanoidStateType.Freefall or 
-               newState == Enum.HumanoidStateType.Jumping then
-            if newState == Enum.HumanoidStateType.Freefall and not hasDoubleJumped then
-                canDoubleJump = true
-            end
-        end
-    end)
-    
-    -- Detección del segundo salto con UserInputService.JumpRequest
+    -- Detección del salto infinito con JumpRequest
     connections.doubleJump = UserInputService.JumpRequest:Connect(function()
         if not Toggles.DoubleJump then return end
         
-        -- Límite de spam: máximo 2 saltos cada 3 segundos
         local now = tick()
-        if jumpCount >= 2 and now - lastJumpReset < 3 then
-            return
-        end
         
-        if now - lastJumpReset >= 3 then
-            jumpCount = 0
-            lastJumpReset = now
+        -- Cooldown para evitar detección por spam
+        if now - lastInfiniteJump < infiniteJumpCooldown then
+            return
         end
         
         pcall(function()
             local char, hrp, hum = getCharacterComponents()
             if not char or not hrp or not hum then return end
             
-            local state = hum:GetState()
+            -- Verificación de altura para evitar problemas con el anticheat
+            -- Si estamos muy alto, reducir frecuencia
+            local rayParams = RaycastParams.new()
+            rayParams.FilterDescendantsInstances = {char}
+            rayParams.FilterType = Enum.RaycastFilterType.Blacklist
             
-            -- Verificar que estamos en el aire Y podemos hacer double jump
-            if (state == Enum.HumanoidStateType.Freefall) and 
-               canDoubleJump and not hasDoubleJumped then
-                
-                jumpCount = jumpCount + 1
-                
-                -- Fuerza variable (55-65% del salto normal)
-                local variation = math.random(55, 65) / 100
-                local jumpPower = (hum.JumpPower or 50) * variation
-                
-                -- Aplicar velocidad hacia arriba
-                hrp.AssemblyLinearVelocity = Vector3.new(
-                    hrp.AssemblyLinearVelocity.X,
-                    jumpPower,
-                    hrp.AssemblyLinearVelocity.Z
-                )
-                
-                -- Forzar estado de salto
-                hum:ChangeState(Enum.HumanoidStateType.Jumping)
-                
-                hasDoubleJumped = true
-                canDoubleJump = false
+            local rayResult = workspace:Raycast(hrp.Position, Vector3.new(0, -1000, 0), rayParams)
+            local heightFromGround = rayResult and (hrp.Position.Y - rayResult.Position.Y) or 0
+            
+            -- Si estamos muy alto (>500 studs), incrementar cooldown temporalmente
+            if heightFromGround > 500 then
+                if now - lastInfiniteJump < 0.3 then
+                    return
+                end
             end
+            
+            -- Simplemente cambiar el estado a Jumping (método más seguro)
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+            
+            lastInfiniteJump = now
         end)
     end)
 end
 
 -- ==========================================
--- ANTI-RAGDOLL SYSTEM
+-- ANTI-RAGDOLL SYSTEM (INFALLIBLE)
 -- ==========================================
 local function setupAntiRagdoll()
     if connections.antiRagdoll then
@@ -252,48 +232,98 @@ local function setupAntiRagdoll()
     if connections.antiRagdollLoop then
         connections.antiRagdollLoop:Disconnect()
     end
+    if connections.antiRagdollHeartbeat then
+        connections.antiRagdollHeartbeat:Disconnect()
+    end
+    if connections.platformStandMonitor then
+        connections.platformStandMonitor:Disconnect()
+    end
     
     if not Toggles.AntiRagdoll then return end
     
     local character, rootPart, humanoid = getCharacterComponents()
     if not character or not humanoid then return end
     
-    -- Método 1: StateChanged event para prevención inmediata
+    -- MÉTODO 1: StateChanged para prevención inmediata de estados
     connections.antiRagdoll = humanoid.StateChanged:Connect(function(oldState, newState)
         if not Toggles.AntiRagdoll then return end
         
         if newState == Enum.HumanoidStateType.Ragdoll or 
-           newState == Enum.HumanoidStateType.FallingDown then
-            -- Forzar estado de recuperación inmediatamente
+           newState == Enum.HumanoidStateType.FallingDown or
+           newState == Enum.HumanoidStateType.Seated then
+            -- Forzar estado de pie inmediatamente
             humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
         end
     end)
     
-    -- Método 2: Bucle continuo para forzar estados y mantener joints activos
-    task.spawn(function()
-        while Toggles.AntiRagdoll and character and character.Parent do
-            pcall(function()
-                local hum = character:FindFirstChildOfClass("Humanoid")
-                if not hum then return end
-                
-                local currentState = hum:GetState()
-                
-                -- Forzar salida de estados de ragdoll/caída
-                if currentState == Enum.HumanoidStateType.Ragdoll or 
-                   currentState == Enum.HumanoidStateType.FallingDown then
-                    hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-                end
-                
-                -- Mantener todos los Motor6D activos
-                for _, descendant in pairs(character:GetDescendants()) do
-                    if descendant:IsA("Motor6D") then
+    -- MÉTODO 2: Monitor de PlatformStand y Sit (cambios de propiedades)
+    connections.platformStandMonitor = humanoid:GetPropertyChangedSignal("PlatformStand"):Connect(function()
+        if not Toggles.AntiRagdoll then return end
+        if humanoid.PlatformStand == true then
+            humanoid.PlatformStand = false
+        end
+    end)
+    
+    -- También monitorear Sit
+    humanoid:GetPropertyChangedSignal("Sit"):Connect(function()
+        if not Toggles.AntiRagdoll then return end
+        if humanoid.Sit == true then
+            humanoid.Sit = false
+        end
+    end)
+    
+    -- MÉTODO 3: RunService.Heartbeat para rigidez constante
+    connections.antiRagdollHeartbeat = RunService.Heartbeat:Connect(function()
+        if not Toggles.AntiRagdoll then return end
+        
+        pcall(function()
+            local char = LocalPlayer.Character
+            if not char then return end
+            
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if not hum then return end
+            
+            -- Forzar propiedades críticas
+            if hum.PlatformStand then
+                hum.PlatformStand = false
+            end
+            
+            if hum.Sit then
+                hum.Sit = false
+            end
+            
+            local currentState = hum:GetState()
+            
+            -- Prevenir estados de ragdoll/caída
+            if currentState == Enum.HumanoidStateType.Ragdoll or 
+               currentState == Enum.HumanoidStateType.FallingDown or
+               currentState == Enum.HumanoidStateType.Seated then
+                hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+            end
+            
+            -- Mantener todos los Motor6D activos (rigidez)
+            for _, descendant in pairs(char:GetDescendants()) do
+                if descendant:IsA("Motor6D") then
+                    if not descendant.Enabled then
                         descendant.Enabled = true
                     end
                 end
-            end)
+            end
             
-            task.wait(0.05) -- Chequeo cada 0.05 segundos para máxima efectividad
-        end
+            -- CRÍTICO para Infinite Jump: No confundir velocidad de caída con ragdoll
+            -- Solo intervenir si realmente estamos en ragdoll, no por velocidad
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                -- Si la velocidad Y es muy negativa pero NO estamos en ragdoll, no hacer nada
+                -- Esto permite caídas normales durante Infinite Jump
+                if hrp.AssemblyLinearVelocity.Y < -100 and currentState ~= Enum.HumanoidStateType.Freefall then
+                    -- Solo entonces verificar si es ragdoll real
+                    if currentState == Enum.HumanoidStateType.Ragdoll then
+                        hum:ChangeState(Enum.HumanoidStateType.Freefall)
+                    end
+                end
+            end
+        end)
     end)
 end
 
@@ -492,11 +522,12 @@ end
 connections.characterAdded = LocalPlayer.CharacterAdded:Connect(function(character)
     task.wait(1)
     
-    -- Reset variables de control
+    -- Reset variables de control para Infinite Jump
     canDoubleJump = false
     hasDoubleJumped = false
     jumpCount = 0
     lastJumpReset = tick()
+    lastInfiniteJump = 0
     
     -- Reactivar funciones
     if Toggles.DoubleJump then setupDoubleJump() end
@@ -926,7 +957,7 @@ local yStart = 5
 local yStep = 55
 
 createToggleButton("Auto Bat (Kill Aura)", yStart + yStep * 0, "AutoBat", startAutoBat, "⚔")
-createToggleButton("Double Jump", yStart + yStep * 1, "DoubleJump", nil, "🦘")
+createToggleButton("Infinite Jump", yStart + yStep * 1, "DoubleJump", nil, "🦘")
 createToggleButton("Anti-Ragdoll", yStart + yStep * 2, "AntiRagdoll", nil, "🛡")
 createToggleButton("Tornado Spin", yStart + yStep * 3, "TornadoSpin", startTornadoSpin, "🌪")
 createToggleButton("Fly Mode", yStart + yStep * 4, "FlyMode", startFlyMode, "✈")
